@@ -2,6 +2,19 @@
 
 Canvas Quiz Assistant is a Chrome extension written in TypeScript that augments Canvas LMS quizzes. It injects a helper button for each question, captures the question context (including a screenshot), sends it to OpenAI for analysis, and applies the suggested answer in the quiz UI.
 
+![Canvas Quiz Assistant injected UI](static/assets/in-quiz-example.png)
+
+## Runtime Behavior
+
+- Detects Canvas quiz pages by URL and quiz DOM structure.
+- Injects a floating button onto each question container.
+- On click:
+  - Captures the question DOM and a PNG screenshot with `html2canvas`.
+  - Sends contextual text and the image to the background service.
+  - The background worker calls OpenAI and expects strict JSON with selected choice IDs (and optional free-form text answers).
+  - The content script applies the suggestion to the quiz UI, toggling the button state to success, error, or timeout.
+  - NOTE: The selected answer could have been misapplied by the interpreter, it is always best that you hover over the checkmark and read what it outputs to ensure it is correct.
+
 ## Getting Started
 
 ```bash
@@ -28,15 +41,7 @@ Open the extension's options page (Chrome menu → Extensions → Canvas Quiz As
 
 ![Canvas Quiz Assistant options page](static/assets/options-page.png)
 
-## Runtime Behavior
+## TODO's
 
-- Detects Canvas quiz pages by URL and quiz DOM structure.
-- Injects a floating button onto each question container.
-- On click:
-  - Captures the question DOM and a PNG screenshot with `html2canvas`.
-  - Sends contextual text and the image to the background service.
-  - The background worker calls OpenAI and expects strict JSON with selected choice IDs (and optional free-form text answers).
-  - The content script applies the suggestion to the quiz UI, toggling the button state to success, error, or timeout.
-  - NOTE: The selected answer could have been misapplied by the interpreter, it is always best that you hover over the checkmark and read what it outputs to ensure it is correct.
-
-![Canvas Quiz Assistant injected UI](static/assets/in-quiz-example.png)
+- [ ] Add auto testing and some way to fake canvas quizzes.
+- [ ] ...
