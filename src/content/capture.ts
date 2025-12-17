@@ -11,7 +11,9 @@ const DEFAULT_PLACEHOLDER_SIZE = 48;
  * @param element - The element to capture.
  * @returns A promise that resolves to a PNG data URL representation of the element.
  */
-export async function captureQuestionImage(element: HTMLElement): Promise<string> {
+export async function captureQuestionImage(
+  element: HTMLElement
+): Promise<string> {
   const previousMarker = element.getAttribute(CAPTURE_MARKER_ATTRIBUTE);
   element.setAttribute(CAPTURE_MARKER_ATTRIBUTE, CAPTURE_MARKER_VALUE);
 
@@ -25,12 +27,10 @@ export async function captureQuestionImage(element: HTMLElement): Promise<string
         const cloneRoot = clonedDocument.querySelector<HTMLElement>(
           `[${CAPTURE_MARKER_ATTRIBUTE}="${CAPTURE_MARKER_VALUE}"]`
         );
-        if (!cloneRoot) {
-          return;
-        }
+        if (!cloneRoot) return;
 
         scrubCrossOriginImages(cloneRoot);
-      }
+      },
     });
 
     const dataUrl = tryGetCanvasDataUrl(canvas);
@@ -63,11 +63,12 @@ function tryGetCanvasDataUrl(canvas: HTMLCanvasElement): string | undefined {
   try {
     return canvas.toDataURL("image/png");
   } catch (error) {
-    if (error instanceof DOMException && error.name === "SecurityError") {
+    if (error instanceof DOMException && error.name === "SecurityError")
       return undefined;
-    }
-
-    console.warn("[CQA] Unexpected error while serializing question canvas.", error);
+    console.warn(
+      "[CQA] Unexpected error while serializing question canvas.",
+      error
+    );
     return undefined;
   }
 }
@@ -77,9 +78,15 @@ function tryGetCanvasDataUrl(canvas: HTMLCanvasElement): string | undefined {
  * @param element - The element to capture.
  * @returns A promise that resolves to a PNG data URL representation of the element.
  */
-async function captureByTabScreenshot(element: HTMLElement): Promise<string | undefined> {
+async function captureByTabScreenshot(
+  element: HTMLElement
+): Promise<string | undefined> {
   try {
-    element.scrollIntoView({ behavior: "instant" as ScrollBehavior, block: "center", inline: "center" });
+    element.scrollIntoView({
+      behavior: "instant" as ScrollBehavior,
+      block: "center",
+      inline: "center",
+    });
   } catch {
     // ignore
   }
@@ -87,19 +94,15 @@ async function captureByTabScreenshot(element: HTMLElement): Promise<string | un
   await wait(150);
 
   const rect = element.getBoundingClientRect();
-  if (rect.width <= 1 || rect.height <= 1) {
-    return undefined;
-  }
+  if (rect.width <= 1 || rect.height <= 1) return undefined;
 
   const dpr = window.devicePixelRatio || 1;
-  const response = (await chrome.runtime.sendMessage({ type: "cqa:capture-tab" })) as
-    | { type: "cqa:capture-tab:response"; dataUrl: string }
-    | undefined;
+  const response = (await chrome.runtime.sendMessage({
+    type: "cqa:capture-tab",
+  })) as { type: "cqa:capture-tab:response"; dataUrl: string } | undefined;
 
   const tabPng = response?.dataUrl ?? "";
-  if (!tabPng) {
-    return undefined;
-  }
+  if (!tabPng) return undefined;
 
   const image = await loadImage(tabPng);
 
@@ -108,17 +111,13 @@ async function captureByTabScreenshot(element: HTMLElement): Promise<string | un
   const sw = Math.min(Math.floor(rect.width * dpr), image.width - sx);
   const sh = Math.min(Math.floor(rect.height * dpr), image.height - sy);
 
-  if (sw <= 0 || sh <= 0) {
-    return undefined;
-  }
+  if (sw <= 0 || sh <= 0) return undefined;
 
   const canvas = document.createElement("canvas");
   canvas.width = sw;
   canvas.height = sh;
   const ctx = canvas.getContext("2d");
-  if (!ctx) {
-    return undefined;
-  }
+  if (!ctx) return undefined;
 
   ctx.drawImage(image, sx, sy, sw, sh, 0, 0, sw, sh);
   return canvas.toDataURL("image/png");
@@ -153,16 +152,12 @@ function loadImage(src: string): Promise<HTMLImageElement> {
  */
 function scrubCrossOriginImages(root: HTMLElement): void {
   const doc = root.ownerDocument;
-  if (!doc) {
-    return;
-  }
+  if (!doc) return;
 
   const images = Array.from(root.querySelectorAll("img"));
   images.forEach((image) => {
     const source = image.getAttribute("src") ?? "";
-    if (!source || !isCrossOriginSource(source)) {
-      return;
-    }
+    if (!source || !isCrossOriginSource(source)) return;
 
     const placeholder = doc.createElement("div");
     placeholder.textContent = buildPlaceholderText(image);
@@ -178,9 +173,7 @@ function scrubCrossOriginImages(root: HTMLElement): void {
  */
 function buildPlaceholderText(image: HTMLImageElement): string {
   const altText = image.getAttribute("alt")?.trim();
-  if (altText) {
-    return `[image: ${altText}]`;
-  }
+  if (altText) return `[image: ${altText}]`;
 
   return "[image unavailable]";
 }
@@ -190,9 +183,14 @@ function buildPlaceholderText(image: HTMLImageElement): string {
  * @param placeholder - The placeholder element to apply styles to.
  * @param source - The source image element.
  */
-function applyPlaceholderStyles(placeholder: HTMLElement, source: HTMLImageElement): void {
-  const width = resolveDimension(source.width) ?? resolveDimension(source.naturalWidth);
-  const height = resolveDimension(source.height) ?? resolveDimension(source.naturalHeight);
+function applyPlaceholderStyles(
+  placeholder: HTMLElement,
+  source: HTMLImageElement
+): void {
+  const width =
+    resolveDimension(source.width) ?? resolveDimension(source.naturalWidth);
+  const height =
+    resolveDimension(source.height) ?? resolveDimension(source.naturalHeight);
 
   placeholder.style.display = "inline-flex";
   placeholder.style.alignItems = "center";
@@ -205,8 +203,14 @@ function applyPlaceholderStyles(placeholder: HTMLElement, source: HTMLImageEleme
   placeholder.style.boxSizing = "border-box";
   placeholder.style.padding = "4px";
   placeholder.style.whiteSpace = "normal";
-  placeholder.style.width = `${Math.max(width ?? DEFAULT_PLACEHOLDER_SIZE, 24)}px`;
-  placeholder.style.height = `${Math.max(height ?? DEFAULT_PLACEHOLDER_SIZE, 24)}px`;
+  placeholder.style.width = `${Math.max(
+    width ?? DEFAULT_PLACEHOLDER_SIZE,
+    24
+  )}px`;
+  placeholder.style.height = `${Math.max(
+    height ?? DEFAULT_PLACEHOLDER_SIZE,
+    24
+  )}px`;
 }
 
 /**
@@ -215,17 +219,9 @@ function applyPlaceholderStyles(placeholder: HTMLElement, source: HTMLImageEleme
  * @returns The resolved dimension value.
  */
 function resolveDimension(value: number | undefined): number | undefined {
-  if (typeof value !== "number") {
-    return undefined;
-  }
-
-  if (!Number.isFinite(value)) {
-    return undefined;
-  }
-
-  if (value <= 0) {
-    return undefined;
-  }
+  if (typeof value !== "number") return undefined;
+  if (!Number.isFinite(value)) return undefined;
+  if (value <= 0) return undefined;
 
   return value;
 }
@@ -236,9 +232,12 @@ function resolveDimension(value: number | undefined): number | undefined {
  * @returns Whether the source is a cross-origin source.
  */
 function isCrossOriginSource(src: string): boolean {
-  if (src.startsWith("data:") || src.startsWith("blob:") || src.startsWith("about:")) {
+  if (
+    src.startsWith("data:") ||
+    src.startsWith("blob:") ||
+    src.startsWith("about:")
+  )
     return false;
-  }
 
   try {
     const url = new URL(src, window.location.href);
@@ -247,4 +246,3 @@ function isCrossOriginSource(src: string): boolean {
     return false;
   }
 }
-

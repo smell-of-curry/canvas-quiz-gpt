@@ -6,7 +6,7 @@ import { parseQuestion } from "./questionParser.js";
 import {
   QuestionChoice,
   SolveQuestionPayload,
-  SolveQuestionResponse
+  SolveQuestionResponse,
 } from "../shared/messages.js";
 
 /**
@@ -74,9 +74,7 @@ function attachAssistant(element: HTMLElement, index: number): void {
  * @returns A unique identifier.
  */
 function ensureUniqueId(baseId: string): string {
-  if (!registry.has(baseId)) {
-    return baseId;
-  }
+  if (!registry.has(baseId)) return baseId;
 
   let suffix = 1;
   let candidate = `${baseId}-${suffix}`;
@@ -100,10 +98,7 @@ async function handleSolveRequest(
   fallbackIndex: number
 ): Promise<void> {
   const entry = registry.get(questionId);
-  if (!entry) {
-    assistant.reset();
-    return;
-  }
+  if (!entry) return assistant.reset();
 
   assistant.setLoading();
 
@@ -113,29 +108,113 @@ async function handleSolveRequest(
     const payload = buildSolvePayload(questionId, parsed, screenshotDataUrl);
     const response = await sendSolveRequest(payload);
 
-    if (response.status !== "success") {
-      assistant.updateFromResponse(response);
-      return;
-    }
+    if (response.status !== "success")
+      return assistant.updateFromResponse(response);
 
-    const applyResult = applyAnswer(parsed, response.answerChoiceIds, response.answerText);
+    const applyResult = applyAnswer(
+      parsed,
+      response.answerChoiceIds,
+      response.answerText
+    );
     if (!applyResult.success) {
       assistant.updateFromResponse({
         status: "error",
         questionId,
-        error: applyResult.error
+        error: buildApplyFailureMessage(applyResult.error, parsed, response),
       });
       return;
     }
 
     assistant.updateFromResponse(response);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unexpected error.";
+    const message =
+      error instanceof Error ? error.message : "Unexpected error.";
     assistant.updateFromResponse({
       status: "error",
       questionId,
-      error: message
+      error: message,
     });
+  }
+}
+
+/**
+ * Build a failure message for the apply answer step.
+ * @param baseError - The base error message.
+ * @param parsed - The parsed question.
+ * @param response - The response from the GPT model.
+ * @returns The failure message.
+ */
+function buildApplyFailureMessage(
+  baseError: string,
+  parsed: ReturnType<typeof parseQuestion>,
+  response: Extract<SolveQuestionResponse, { status: "success" }>
+): string {
+  const lines: string[] = [];
+  lines.push(baseError);
+
+  const returnedIds = Array.isArray(response.answerChoiceIds)
+    ? response.answerChoiceIds
+    : [];
+  const returnedText =
+    typeof response.answerText === "string"
+      ? response.answerText
+      : Array.isArray(response.answerText)
+      ? response.answerText.join(" | ")
+      : "";
+
+  lines.push(
+    "",
+    "GPT output:",
+    `- answerIds: ${safeJson(returnedIds)}`,
+    `- answerText: ${safeJson(response.answerText)}`,
+    response.reasoning
+      ? `- reasoning: ${String(response.reasoning).slice(0, 600)}`
+      : ""
+  );
+
+  const choicesPreview = parsed.choices.slice(0, 40).map((choice, index) => {
+    const letter =
+      choice.kind === "single" || choice.kind === "multi"
+        ? deriveChoiceLetter(index)
+        : undefined;
+    const value =
+      typeof choice.value === "string" && choice.value.trim()
+        ? ` value=${choice.value}`
+        : "";
+    const prefix = [letter ? `(${letter})` : "", `#${index + 1}`]
+      .filter(Boolean)
+      .join(" ");
+    return `- ${prefix} [${choice.id}] ${choice.label}${value}`;
+  });
+
+  if (choicesPreview.length > 0) {
+    lines.push("", "Available choices:", ...choicesPreview);
+    if (parsed.choices.length > choicesPreview.length) {
+      lines.push(`... (${parsed.choices.length - choicesPreview.length} more)`);
+    }
+  }
+
+  // Also include an easy-to-scan single-line hint if model returned label-like ids.
+  if (returnedText && returnedIds.length === 0) {
+    lines.push(
+      "",
+      `Hint: model returned text without ids: "${returnedText.slice(0, 200)}"`
+    );
+  }
+
+  return lines.filter(Boolean).join("\n").slice(0, 1800);
+}
+
+/**
+ * Safely serialize a value to JSON.
+ * @param value - The value to serialize.
+ * @returns The serialized value.
+ */
+function safeJson(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
   }
 }
 
@@ -154,7 +233,9 @@ function buildSolvePayload(
   const choices: QuestionChoice[] = parsed.choices.map((choice, index) => {
     const value = getChoiceValue(choice);
     const letter =
-      choice.kind === "single" || choice.kind === "multi" ? deriveChoiceLetter(index) : undefined;
+      choice.kind === "single" || choice.kind === "multi"
+        ? deriveChoiceLetter(index)
+        : undefined;
 
     return {
       id: choice.id,
@@ -162,7 +243,7 @@ function buildSolvePayload(
       kind: choice.kind,
       value,
       index: index + 1,
-      letter
+      letter,
     };
   });
 
@@ -175,18 +256,27 @@ function buildSolvePayload(
     choices,
     context: {
       quizTitle: getQuizTitle(),
-      questionNumber: parsed.number
-    }
+      questionNumber: parsed.number,
+    },
   };
 }
 
-function getChoiceValue(choice: ReturnType<typeof parseQuestion>["choices"][number]): string | undefined {
-  if (typeof choice.value === "string" && choice.value.trim()) {
+/**
+ * Get the value of a choice.
+ * @param choice - The choice to get the value of.
+ * @returns The value of the choice.
+ */
+function getChoiceValue(
+  choice: ReturnType<typeof parseQuestion>["choices"][number]
+): string | undefined {
+  if (typeof choice.value === "string" && choice.value.trim())
     return choice.value.trim();
-  }
 
   const element = choice.element;
-  if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+  if (
+    element instanceof HTMLInputElement ||
+    element instanceof HTMLTextAreaElement
+  ) {
     const value = element.value.trim();
     if (value) return value;
   }
@@ -194,6 +284,11 @@ function getChoiceValue(choice: ReturnType<typeof parseQuestion>["choices"][numb
   return undefined;
 }
 
+/**
+ * Derive a letter for a choice.
+ * @param index - The index of the choice.
+ * @returns The letter for the choice.
+ */
 function deriveChoiceLetter(index: number): string | undefined {
   if (index < 0) return undefined;
 
@@ -213,21 +308,26 @@ function deriveChoiceLetter(index: number): string | undefined {
  * @param payload - The payload to send.
  * @returns A promise that resolves to the GPT response.
  */
-function sendSolveRequest(payload: SolveQuestionPayload): Promise<SolveQuestionResponse> {
+function sendSolveRequest(
+  payload: SolveQuestionPayload
+): Promise<SolveQuestionResponse> {
   return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage({ type: "cqa:solve-question", payload }, (response) => {
-      if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
-        return;
-      }
+    chrome.runtime.sendMessage(
+      { type: "cqa:solve-question", payload },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
 
-      if (!response) {
-        reject(new Error("No response from background script."));
-        return;
-      }
+        if (!response) {
+          reject(new Error("No response from background script."));
+          return;
+        }
 
-      resolve(response as SolveQuestionResponse);
-    });
+        resolve(response as SolveQuestionResponse);
+      }
+    );
   });
 }
 
@@ -239,7 +339,7 @@ function getQuizTitle(): string | undefined {
   const candidates = [
     document.querySelector<HTMLElement>("#quiz_title"),
     document.querySelector<HTMLElement>(".quiz-header h1"),
-    document.querySelector<HTMLElement>("h1")
+    document.querySelector<HTMLElement>("h1"),
   ];
 
   for (const element of candidates) {
@@ -249,4 +349,3 @@ function getQuizTitle(): string | undefined {
 
   return undefined;
 }
-

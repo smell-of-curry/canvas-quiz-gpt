@@ -32,9 +32,12 @@ export const DEFAULT_SETTINGS: AssistantSettings = {
   apiKey: "",
   model: "gpt-4o-mini",
   temperature: 0.2,
-  timeoutSeconds: 45
+  timeoutSeconds: 45,
 };
 
+/**
+ * Stored settings type.
+ */
 type StoredSettings = Partial<AssistantSettings>;
 
 /**
@@ -48,6 +51,7 @@ export async function loadSettings(): Promise<AssistantSettings> {
 
 /**
  * Persist updated assistant settings to Chrome sync storage.
+ * @param settings - The settings to persist.
  */
 export async function saveSettings(settings: StoredSettings): Promise<void> {
   const next = { ...DEFAULT_SETTINGS, ...settings };
@@ -56,8 +60,8 @@ export async function saveSettings(settings: StoredSettings): Promise<void> {
 
 /**
  * Remove any stored assistant preferences, restoring defaults on the next load.
+ * @returns A promise that resolves when the settings are reset.
  */
 export async function resetSettings(): Promise<void> {
   await chrome.storage.sync.remove(STORAGE_KEY);
 }
-

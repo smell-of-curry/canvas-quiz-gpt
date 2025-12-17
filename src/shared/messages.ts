@@ -13,7 +13,7 @@ export type QuestionChoice = {
   /**
    * The kind of choice.
    */
-  kind: "single" | "multi" | "text";
+  kind: "single" | "multi" | "text" | "select";
   /**
    * Value attribute captured from the original input, when available.
    */
@@ -39,7 +39,7 @@ export type SolveQuestionPayload = {
   /**
    * The type of question.
    */
-  questionType: "single" | "multi" | "text" | "unknown";
+  questionType: "single" | "multi" | "text" | "select" | "unknown";
   /**
    * The text of the question.
    */

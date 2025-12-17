@@ -110,6 +110,9 @@ async function initialize(): Promise<void> {
   });
 }
 
+/**
+ * Populate the model select with the available models.
+ */
 function populateModelSelect(): void {
   if (!modelSelect) return;
 
@@ -150,6 +153,10 @@ function applySettingsToForm(settings: typeof DEFAULT_SETTINGS): void {
   );
 }
 
+/**
+ * Set the model in the form.
+ * @param model - The model to set in the form.
+ */
 function setModelInForm(model: string): void {
   if (!modelSelect || !customModelInput) return;
 
@@ -166,6 +173,10 @@ function setModelInForm(model: string): void {
   syncCustomModelVisibility(false);
 }
 
+/**
+ * Sync the custom model visibility.
+ * @param shouldFocus - Whether to focus the custom model input.
+ */
 function syncCustomModelVisibility(shouldFocus: boolean): void {
   if (!modelSelect || !customModelRow || !customModelInput) return;
 
@@ -176,6 +187,10 @@ function syncCustomModelVisibility(shouldFocus: boolean): void {
   if (isCustom && shouldFocus) customModelInput.focus();
 }
 
+/**
+ * Read the model from the form.
+ * @returns The model from the form.
+ */
 function readModelFromForm(): string | null {
   if (!modelSelect || !customModelInput) return null;
 
@@ -248,6 +263,11 @@ async function persistSettings(): Promise<void> {
   }
 }
 
+/**
+ * Validate that a model exists.
+ * @param apiKey - The API key to use to validate the model.
+ * @param model - The model to validate.
+ */
 async function validateModelExists(
   apiKey: string,
   model: string
@@ -303,6 +323,11 @@ async function validateModelExists(
   }
 }
 
+/**
+ * Extract an error message from an OpenAI API response.
+ * @param bodyText - The body text of the OpenAI API response.
+ * @returns The extracted error message.
+ */
 function extractOpenAiErrorMessage(bodyText: string): string | null {
   if (!bodyText) return null;
 

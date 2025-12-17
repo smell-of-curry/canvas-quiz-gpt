@@ -1,0 +1,18 @@
+{
+  "eslint.validate": ["typescript", "json"],
+  "eslint.run": "onSave",
+  "editor.formatOnSave": true,
+  "typescript.validate.enable": true,
+  "files.autoSave": "off",
+  "files.eol": "\n",
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
+  "files.watcherExclude": {
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/node_modules/**": true,
+    "/scripts/**": true
+  },
+  "cSpell.words": ["labelledby", "onclone"]
+}

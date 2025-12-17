@@ -15,9 +15,7 @@ const QUESTION_SELECTORS = [
 export function isCanvasQuizPage(): boolean {
   const path = window.location.pathname ?? "";
   const matchesQuizPath = /quizzes/i.test(path);
-  if (!matchesQuizPath) {
-    return false;
-  }
+  if (!matchesQuizPath) return false;
 
   return document.querySelector(QUESTION_SELECTORS) !== null;
 }
@@ -65,16 +63,14 @@ export function observeQuestions(callback: QuestionCallback): () => void {
  */
 function isValidQuestionContainer(element: HTMLElement): boolean {
   const hasDataId =
-    element.hasAttribute("data-question-id") || element.dataset?.["questionId"] !== undefined;
-  if (hasDataId) {
-    return true;
-  }
+    element.hasAttribute("data-question-id") ||
+    element.dataset?.["questionId"] !== undefined;
+  if (hasDataId) return true;
 
   const id = element.getAttribute("id") ?? "";
-  if (/^question_\d+/.test(id)) {
-    return true;
-  }
+  if (/^question_\d+/.test(id)) return true;
 
-  return element.matches(".display_question, .question_holder, li.quiz_question");
+  return element.matches(
+    ".display_question, .question_holder, li.quiz_question"
+  );
 }
-

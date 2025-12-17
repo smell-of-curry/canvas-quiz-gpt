@@ -40,7 +40,8 @@ export type OpenAiFailure =
 
 export type OpenAiResult = OpenAiSuccess | OpenAiFailure;
 
-const OPENAI_CHAT_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions";
+const OPENAI_CHAT_COMPLETIONS_URL =
+  "https://api.openai.com/v1/chat/completions";
 
 /**
  * Construct textual context describing the quiz question for the GPT prompt.
@@ -68,12 +69,22 @@ function buildQuestionSummary(payload: SolveQuestionPayload): string {
     `Question text: ${payload.questionText.trim()}`
   );
 
+  const htmlSnippet = truncate(payload.questionHtml ?? "", 6000);
+  if (htmlSnippet.trim())
+    lines.push(
+      "",
+      "Question HTML (truncated; useful if math/choices render oddly):",
+      htmlSnippet
+    );
+
   const choiceLines = payload.choices.map((choice) => {
     const position = typeof choice.index === "number" ? `#${choice.index}` : "";
     const letter = choice.letter ? ` (${choice.letter})` : "";
     const value = choice.value ? ` [value=${choice.value}]` : "";
     const prefix = [position, letter].filter(Boolean).join("");
-    return `${prefix ? `${prefix} ` : ""}[${choice.id}] ${choice.label}${value}`;
+    return `${prefix ? `${prefix} ` : ""}[${choice.id}] ${
+      choice.label
+    }${value}`;
   });
 
   if (choiceLines.length > 0) lines.push("Choices:\n" + choiceLines.join("\n"));
@@ -82,9 +93,17 @@ function buildQuestionSummary(payload: SolveQuestionPayload): string {
   );
   lines.push(
     "Important: Populate answerIds with the exact id strings shown in brackets. If you select options by letter or number, convert them back to the matching id.",
-    "For single- or multi-select questions, set answerText to the chosen label(s) (string for one choice, array for multiple). For text-entry questions, answerText must contain the text to insert."
+    "For single- or multi-select questions (radio/checkbox), set answerText to the chosen label(s) (string for one choice, array for multiple).",
+    "For dropdown/select questions, return one answerId per dropdown (in DOM order). Set answerText to the chosen label(s) (string for one dropdown, array for multiple).",
+    "For text-entry questions, answerText must contain the text to insert."
   );
   return lines.filter(Boolean).join("\n");
+}
+
+function truncate(value: string, maxChars: number): string {
+  const cleaned = String(value ?? "");
+  if (cleaned.length <= maxChars) return cleaned;
+  return cleaned.slice(0, Math.max(0, maxChars - 20)) + "\n...[truncated]...";
 }
 
 /**
@@ -96,16 +115,19 @@ function buildUserContent(payload: SolveQuestionPayload): UserContentPart[] {
   const content: UserContentPart[] = [
     {
       type: "text",
-      text: buildQuestionSummary(payload)
-    }
+      text: buildQuestionSummary(payload),
+    },
   ];
 
-  if (payload.screenshotDataUrl && payload.screenshotDataUrl.trim().length > 0) {
+  if (
+    payload.screenshotDataUrl &&
+    payload.screenshotDataUrl.trim().length > 0
+  ) {
     content.push({
       type: "image_url",
       image_url: {
-        url: payload.screenshotDataUrl
-      }
+        url: payload.screenshotDataUrl,
+      },
     });
   }
 
@@ -122,10 +144,11 @@ export async function requestOpenAiSolution(
   payload: SolveQuestionPayload,
   settings: AssistantSettings
 ): Promise<OpenAiResult> {
-  if (!settings.apiKey) return {
-    status: "error",
-    error: "Missing OpenAI API key. Please add it in the extension options."
-  };
+  if (!settings.apiKey)
+    return {
+      status: "error",
+      error: "Missing OpenAI API key. Please add it in the extension options.",
+    };
 
   const controller = new AbortController();
   const timeoutMs = Math.max(5, settings.timeoutSeconds) * 1000;
@@ -136,7 +159,7 @@ export async function requestOpenAiSolution(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${settings.apiKey}`
+        Authorization: `Bearer ${settings.apiKey}`,
       },
       body: JSON.stringify({
         model: settings.model,
@@ -146,15 +169,15 @@ export async function requestOpenAiSolution(
           {
             role: "system",
             content:
-              "You are a Canvas LMS quiz assistant. Analyze the provided question and choices, then respond with strict JSON: {\"answerIds\": string[], \"reasoning\": string, \"answerText\": string | string[]}. Always fill answerIds with the exact id values supplied in the prompt. For single- or multi-select questions, mirror the selected choice labels in answerText (string for one selection, array for multiple). If unsure, leave answerIds empty, set answerText to an explanatory string, and explain why."
+              'You are a Canvas LMS quiz assistant. Analyze the provided question and choices, then respond with strict JSON: {"answerIds": string[], "reasoning": string, "answerText": string | string[]}. Always fill answerIds with the exact id values supplied in the prompt. For radio/checkbox questions, mirror the selected choice labels in answerText (string for one selection, array for multiple). For dropdown/select questions, return one answerId per dropdown (in DOM order) and mirror the selected option labels in answerText (string for one dropdown, array for multiple). If unsure, leave answerIds empty, set answerText to an explanatory string, and explain why.',
           },
           {
             role: "user",
-            content: buildUserContent(payload)
-          }
-        ]
+            content: buildUserContent(payload),
+          },
+        ],
       }),
-      signal: controller.signal
+      signal: controller.signal,
     });
 
     if (!response.ok) {
@@ -163,7 +186,7 @@ export async function requestOpenAiSolution(
         status: "error",
         error:
           errorBody ||
-          `OpenAI API returned status ${response.status}. Check your key and model configuration.`
+          `OpenAI API returned status ${response.status}. Check your key and model configuration.`,
       };
     }
 
@@ -172,7 +195,8 @@ export async function requestOpenAiSolution(
     };
 
     const content = data.choices?.[0]?.message?.content ?? "";
-    if (!content) return { status: "error", error: "OpenAI response was empty." };
+    if (!content)
+      return { status: "error", error: "OpenAI response was empty." };
 
     let parsed: ParsedAssistantResponse;
     try {
@@ -180,26 +204,31 @@ export async function requestOpenAiSolution(
     } catch (error) {
       return {
         status: "error",
-        error: `Failed to parse assistant response as JSON: ${(error as Error).message}`
+        error: `Failed to parse assistant response as JSON: ${
+          (error as Error).message
+        }`,
       };
     }
 
-    const answerChoiceIds = Array.isArray(parsed.answerIds) ? parsed.answerIds : [];
+    const answerChoiceIds = Array.isArray(parsed.answerIds)
+      ? parsed.answerIds
+      : [];
     return {
       status: "success",
       answerChoiceIds,
       reasoning: parsed.reasoning,
-      answerText: parsed.answerText
+      answerText: parsed.answerText,
     };
   } catch (error) {
-    if ((error as Error).name === "AbortError") return { status: "timeout", error: "Request timed out." };
+    if ((error as Error).name === "AbortError")
+      return { status: "timeout", error: "Request timed out." };
 
     return {
       status: "error",
-      error: (error as Error).message || "Unexpected error while contacting OpenAI."
+      error:
+        (error as Error).message || "Unexpected error while contacting OpenAI.",
     };
   } finally {
     clearTimeout(timeoutId);
   }
 }
-
