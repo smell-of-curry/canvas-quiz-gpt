@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Canvas Quiz Assistant Settings</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main class="options-container">
+      <h1>Canvas Quiz Assistant</h1>
+      <section>
+        <p>
+          Configure your OpenAI credentials and model. Values are stored locally using Chrome
+          sync storage.
+        </p>
+      </section>
+      <form id="settings-form">
+        <label for="apiKey">OpenAI API Key</label>
+        <input type="password" id="apiKey" name="apiKey" autocomplete="off" />
+
+        <label for="modelSelect">Model</label>
+        <select id="modelSelect" name="modelSelect"></select>
+
+        <div id="customModelRow" hidden>
+          <label for="customModel">Custom model</label>
+          <input type="text" id="customModel" name="customModel" placeholder="e.g. gpt-4o-mini" />
+        </div>
+
+        <label for="timeout">Request Timeout (seconds)</label>
+        <input type="number" id="timeout" name="timeout" min="5" max="120" />
+
+        <label for="temperature">Temperature</label>
+        <input type="number" id="temperature" name="temperature" min="0" max="2" step="0.1" />
+
+        <div class="button-row">
+          <button type="submit">Save</button>
+          <button type="button" id="resetBtn">Reset</button>
+        </div>
+        <p id="status" role="status" aria-live="polite"></p>
+      </form>
+    </main>
+    <script type="module" src="options.js"></script>
+  </body>
+</html>
+
