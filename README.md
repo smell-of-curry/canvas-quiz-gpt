@@ -34,6 +34,10 @@ Open the extension's options page (Chrome menu → Extensions → Canvas Quiz As
 - **Request Timeout** – limits how long the background worker waits for OpenAI.
 - **Temperature** – controls response creativity (defaults to `0.2`).
 
+Example options page:
+
+![Canvas Quiz Assistant options page](static/assets/options-page.png)
+
 ## Runtime Behavior
 
 - Detects Canvas quiz pages by URL and quiz DOM structure.
