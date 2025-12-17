@@ -1,4 +1,7 @@
-import { SolveQuestionResponse, SolveResultStatus } from "../shared/messages.js";
+import {
+  SolveQuestionResponse,
+  SolveResultStatus,
+} from "../shared/messages.js";
 
 /**
  * Internal state machine for each question assistant button.
@@ -12,7 +15,7 @@ const STATE_ICON_FILES: Record<Exclude<AssistantState, "idle">, string> = {
   loading: "assets/question-loading.svg",
   success: "assets/question-success.svg",
   error: "assets/question-error.svg",
-  timeout: "assets/question-timeout.svg"
+  timeout: "assets/question-timeout.svg",
 };
 
 const IDLE_ICON_FILE = "assets/question-idle.svg";
@@ -84,9 +87,11 @@ export class QuestionAssistant {
         typeof response.answerText === "string"
           ? response.answerText
           : Array.isArray(response.answerText)
-            ? response.answerText.join(", ")
-            : "";
-      const combined = [response.reasoning, answerText].filter(Boolean).join(" • ");
+          ? response.answerText.join(", ")
+          : "";
+      const combined = [response.reasoning, answerText]
+        .filter(Boolean)
+        .join(" • ");
       const reasoning = (combined || "Answer applied.").slice(0, 500);
       this.button.title = reasoning;
     }
@@ -122,6 +127,16 @@ export class QuestionAssistant {
     button.style.backgroundImage = `url(${getIconForState("idle")})`;
     button.addEventListener("click", () => {
       if (this.state === "loading") return;
+      if (this.state !== "success") {
+        this.onRequestSolve(this);
+        return;
+      }
+
+      const confirmed = window.confirm(
+        "This question already has a GPT-applied answer. Send for another attempt?"
+      );
+      if (!confirmed) return;
+
       this.onRequestSolve(this);
     });
 
@@ -209,7 +224,9 @@ function getIconForState(state: AssistantState): string {
   const asset = STATE_ICON_FILES[state];
   if (asset) return chrome.runtime.getURL(asset);
 
-  console.warn(`Failed to resolve icon for unknown assistant state: ${state}, using idle icon.`);
+  console.warn(
+    `Failed to resolve icon for unknown assistant state: ${state}, using idle icon.`
+  );
   return chrome.runtime.getURL(IDLE_ICON_FILE);
 }
 
@@ -229,8 +246,9 @@ function getTitleForState(state: AssistantState): string {
     case "timeout":
       return "GPT request timed out.";
     default:
-      console.warn(`Failed to resolve tooltip for unknown assistant state: ${state}, using default tooltip.`);
+      console.warn(
+        `Failed to resolve tooltip for unknown assistant state: ${state}, using default tooltip.`
+      );
       return `GPT was unable to answer this question (${state}).`;
   }
 }
-
