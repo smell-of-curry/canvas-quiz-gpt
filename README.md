@@ -48,6 +48,10 @@ Example options page:
   - The background worker calls OpenAI and expects strict JSON with selected choice IDs (and optional free-form text answers).
   - The content script applies the suggestion to the quiz UI, toggling the button state to success, error, or timeout.
 
+Example in-quiz UI:
+
+![Canvas Quiz Assistant injected UI](static/assets/in-quiz-example.png)
+
 ## Manual Testing Checklist
 
 - **Initial Load**: Build the project, load the unpacked extension, and confirm the options page loads and persists settings.
