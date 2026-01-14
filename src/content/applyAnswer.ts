@@ -1,4 +1,4 @@
-import { ParsedQuestion } from "./questionParser.js";
+import type { ParsedQuestion } from "./platforms/types.js";
 
 /**
  * Result of attempting to apply a GPT suggestion to the DOM.
