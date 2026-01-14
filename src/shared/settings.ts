@@ -1,7 +1,7 @@
 /**
  * Storage bucket key for persisting assistant preferences via Chrome sync storage.
  */
-const STORAGE_KEY = "cqa_settings_v1";
+const STORAGE_KEY = "qa_settings_v1";
 
 /**
  * Normalized configuration required to communicate with the GPT backend.

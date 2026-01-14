@@ -1,18 +1,21 @@
 {
-  "name": "canvas-quiz-gpt",
-  "version": "0.1.0",
-  "description": "Chrome extension that assists with Canvas quiz answers via GPT.",
+  "name": "quiz-gpt",
+  "version": "0.2.0",
+  "description": "Chrome extension that assists with online quiz answers via GPT. Supports multiple platforms including Canvas LMS.",
   "private": true,
   "scripts": {
     "clean": "rm -rf dist",
     "copy": "node scripts/copy-static.mjs",
     "build": "npm run clean && tsup && npm run copy",
-    "dev": "npm run clean && tsup --watch --onSuccess \\\"npm run copy\\\""
+    "dev": "npm run clean && tsup --watch --onSuccess \"npm run copy\""
   },
   "keywords": [
     "chrome-extension",
+    "quiz",
+    "gpt",
     "canvas",
-    "gpt"
+    "wiley",
+    "expertta"
   ],
   "author": "",
   "license": "MIT",
