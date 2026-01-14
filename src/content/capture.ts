@@ -1,6 +1,6 @@
 import html2canvas from "html2canvas";
 
-const CAPTURE_MARKER_ATTRIBUTE = "data-cqa-capture-root";
+const CAPTURE_MARKER_ATTRIBUTE = "data-qa-capture-root";
 const CAPTURE_MARKER_VALUE = "true";
 const DEFAULT_PLACEHOLDER_SIZE = 48;
 
@@ -37,13 +37,13 @@ export async function captureQuestionImage(
     if (dataUrl) return dataUrl;
 
     console.warn(
-      "[CQA] Canvas serialization blocked by cross-origin content. Falling back to tab capture."
+      "[QuizGPT] Canvas serialization blocked by cross-origin content. Falling back to tab capture."
     );
     // Fallback: capture the visible tab and crop to the element bounds
     const fallback = await captureByTabScreenshot(element);
     return fallback ?? "";
   } catch (error) {
-    console.warn("[CQA] Failed to capture question image.", error);
+    console.warn("[QuizGPT] Failed to capture question image.", error);
     return "";
   } finally {
     if (previousMarker === null) {
@@ -66,7 +66,7 @@ function tryGetCanvasDataUrl(canvas: HTMLCanvasElement): string | undefined {
     if (error instanceof DOMException && error.name === "SecurityError")
       return undefined;
     console.warn(
-      "[CQA] Unexpected error while serializing question canvas.",
+      "[QuizGPT] Unexpected error while serializing question canvas.",
       error
     );
     return undefined;
@@ -98,8 +98,8 @@ async function captureByTabScreenshot(
 
   const dpr = window.devicePixelRatio || 1;
   const response = (await chrome.runtime.sendMessage({
-    type: "cqa:capture-tab",
-  })) as { type: "cqa:capture-tab:response"; dataUrl: string } | undefined;
+    type: "qa:capture-tab",
+  })) as { type: "qa:capture-tab:response"; dataUrl: string } | undefined;
 
   const tabPng = response?.dataUrl ?? "";
   if (!tabPng) return undefined;

@@ -19,7 +19,7 @@ const STATE_ICON_FILES: Record<Exclude<AssistantState, "idle">, string> = {
 };
 
 const IDLE_ICON_FILE = "assets/question-idle.svg";
-const STYLE_ID = "cqa-style";
+const STYLE_ID = "qa-style";
 
 /**
  * Callback executed when the assistant button requests a GPT solution.
@@ -27,7 +27,7 @@ const STYLE_ID = "cqa-style";
 type SolveRequestHandler = (assistant: QuestionAssistant) => void;
 
 /**
- * Manages lifecycle and UI for an individual Canvas quiz question assistant button.
+ * Manages lifecycle and UI for an individual quiz question assistant button.
  */
 export class QuestionAssistant {
   private readonly question: HTMLElement;
@@ -110,7 +110,7 @@ export class QuestionAssistant {
    */
   private attach(): void {
     ensureStyles();
-    this.question.classList.add("cqa-question");
+    this.question.classList.add("qa-question");
     this.question.prepend(this.button);
   }
 
@@ -121,7 +121,7 @@ export class QuestionAssistant {
   private createButton(): HTMLButtonElement {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "cqa-button cqa-state-idle";
+    button.className = "qa-button qa-state-idle";
     button.title = "Ask GPT to suggest an answer";
     button.setAttribute("aria-label", "Ask GPT to suggest an answer");
     button.style.backgroundImage = `url(${getIconForState("idle")})`;
@@ -151,13 +151,13 @@ export class QuestionAssistant {
     if (this.state === next) return;
     this.state = next;
     this.button.classList.remove(
-      "cqa-state-idle",
-      "cqa-state-loading",
-      "cqa-state-success",
-      "cqa-state-error",
-      "cqa-state-timeout"
+      "qa-state-idle",
+      "qa-state-loading",
+      "qa-state-success",
+      "qa-state-error",
+      "qa-state-timeout"
     );
-    this.button.classList.add(`cqa-state-${next}`);
+    this.button.classList.add(`qa-state-${next}`);
     this.button.title = getTitleForState(next);
     this.button.style.backgroundImage = `url(${getIconForState(next)})`;
     this.button.disabled = next === "loading";
@@ -172,11 +172,11 @@ function ensureStyles(): void {
   const style = document.createElement("style");
   style.id = STYLE_ID;
   style.textContent = `
-    .cqa-question {
+    .qa-question {
       position: relative;
     }
 
-    .cqa-button {
+    .qa-button {
       position: absolute;
       top: 8px;
       right: 8px;
@@ -191,21 +191,21 @@ function ensureStyles(): void {
       z-index: 10;
     }
 
-    .cqa-button:hover:not(:disabled) {
+    .qa-button:hover:not(:disabled) {
       transform: scale(1.08);
       box-shadow: 0 4px 12px rgba(0,0,0,0.25);
     }
 
-    .cqa-button:disabled {
+    .qa-button:disabled {
       cursor: progress;
       opacity: 0.85;
     }
 
-    .cqa-state-loading {
-      animation: cqa-spin 1s linear infinite;
+    .qa-state-loading {
+      animation: qa-spin 1s linear infinite;
     }
 
-    @keyframes cqa-spin {
+    @keyframes qa-spin {
       from { transform: rotate(0deg); }
       to { transform: rotate(360deg); }
     }

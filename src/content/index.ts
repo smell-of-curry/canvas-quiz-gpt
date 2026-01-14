@@ -1,8 +1,7 @@
 import { applyAnswer } from "./applyAnswer.js";
 import { captureQuestionImage } from "./capture.js";
-import { isCanvasQuizPage, observeQuestions } from "./canvasDetector.js";
+import { platformRegistry, type PlatformAdapter, type ParsedQuestion } from "./platforms/index.js";
 import { QuestionAssistant } from "./questionAssistant.js";
-import { parseQuestion } from "./questionParser.js";
 import {
   QuestionChoice,
   SolveQuestionPayload,
@@ -32,20 +31,33 @@ type QuestionEntry = {
  */
 const registry = new Map<string, QuestionEntry>();
 
+/**
+ * The active platform adapter for the current page.
+ */
+let activePlatform: PlatformAdapter | undefined;
+
 initialize();
 
 /**
- * Bootstraps the content script once a Canvas quiz is detected in the DOM.
+ * Bootstraps the content script once a supported quiz platform is detected in the DOM.
  */
 function initialize(): void {
-  if (isCanvasQuizPage()) {
-    observeQuestions((element, index) => attachAssistant(element, index));
+  // Try to detect platform immediately
+  activePlatform = platformRegistry.detect();
+
+  if (activePlatform) {
+    console.log(`[QuizGPT] Detected platform: ${activePlatform.name}`);
+    activePlatform.observeQuestions((element, index) => attachAssistant(element, index));
     return;
   }
 
+  // If not detected, watch for DOM changes that might indicate a quiz page
   const watcher = new MutationObserver(() => {
-    if (!isCanvasQuizPage()) return;
-    observeQuestions((element, index) => attachAssistant(element, index));
+    activePlatform = platformRegistry.detect();
+    if (!activePlatform) return;
+
+    console.log(`[QuizGPT] Detected platform: ${activePlatform.name}`);
+    activePlatform.observeQuestions((element, index) => attachAssistant(element, index));
     watcher.disconnect();
   });
 
@@ -58,8 +70,10 @@ function initialize(): void {
  * @param index - The fallback index of the question.
  */
 function attachAssistant(element: HTMLElement, index: number): void {
-  if (element.querySelector<HTMLButtonElement>(".cqa-button")) return;
-  const parsed = parseQuestion(element, index);
+  if (!activePlatform) return;
+  if (element.querySelector<HTMLButtonElement>(".qa-button")) return;
+
+  const parsed = activePlatform.parseQuestion(element, index);
   const uniqueId = ensureUniqueId(parsed.id);
 
   const assistant = new QuestionAssistant(element, (instance) =>
@@ -97,15 +111,17 @@ async function handleSolveRequest(
   assistant: QuestionAssistant,
   fallbackIndex: number
 ): Promise<void> {
+  if (!activePlatform) return assistant.reset();
+
   const entry = registry.get(questionId);
   if (!entry) return assistant.reset();
 
   assistant.setLoading();
 
   try {
-    const parsed = parseQuestion(entry.element, fallbackIndex);
+    const parsed = activePlatform.parseQuestion(entry.element, fallbackIndex);
     const screenshotDataUrl = await captureQuestionImage(entry.element);
-    const payload = buildSolvePayload(questionId, parsed, screenshotDataUrl);
+    const payload = buildSolvePayload(questionId, parsed, screenshotDataUrl, activePlatform);
     const response = await sendSolveRequest(payload);
 
     if (response.status !== "success")
@@ -146,7 +162,7 @@ async function handleSolveRequest(
  */
 function buildApplyFailureMessage(
   baseError: string,
-  parsed: ReturnType<typeof parseQuestion>,
+  parsed: ParsedQuestion,
   response: Extract<SolveQuestionResponse, { status: "success" }>
 ): string {
   const lines: string[] = [];
@@ -223,12 +239,14 @@ function safeJson(value: unknown): string {
  * @param questionId - The ID of the question.
  * @param parsed - The parsed question.
  * @param screenshotDataUrl - The screenshot data URL.
+ * @param platform - The active platform adapter.
  * @returns The payload expected by the background worker for GPT solving.
  */
 function buildSolvePayload(
   questionId: string,
-  parsed: ReturnType<typeof parseQuestion>,
-  screenshotDataUrl: string
+  parsed: ParsedQuestion,
+  screenshotDataUrl: string,
+  platform: PlatformAdapter
 ): SolveQuestionPayload {
   const choices: QuestionChoice[] = parsed.choices.map((choice, index) => {
     const value = getChoiceValue(choice);
@@ -255,8 +273,10 @@ function buildSolvePayload(
     screenshotDataUrl,
     choices,
     context: {
-      quizTitle: getQuizTitle(),
+      quizTitle: platform.getQuizTitle(),
       questionNumber: parsed.number,
+      platform: platform.id,
+      platformName: platform.name,
     },
   };
 }
@@ -267,7 +287,7 @@ function buildSolvePayload(
  * @returns The value of the choice.
  */
 function getChoiceValue(
-  choice: ReturnType<typeof parseQuestion>["choices"][number]
+  choice: ParsedQuestion["choices"][number]
 ): string | undefined {
   if (typeof choice.value === "string" && choice.value.trim())
     return choice.value.trim();
@@ -313,7 +333,7 @@ function sendSolveRequest(
 ): Promise<SolveQuestionResponse> {
   return new Promise((resolve, reject) => {
     chrome.runtime.sendMessage(
-      { type: "cqa:solve-question", payload },
+      { type: "qa:solve-question", payload },
       (response) => {
         if (chrome.runtime.lastError) {
           reject(new Error(chrome.runtime.lastError.message));
@@ -329,23 +349,4 @@ function sendSolveRequest(
       }
     );
   });
-}
-
-/**
- * Attempt to extract the quiz title for additional prompt context.
- * @returns The quiz title.
- */
-function getQuizTitle(): string | undefined {
-  const candidates = [
-    document.querySelector<HTMLElement>("#quiz_title"),
-    document.querySelector<HTMLElement>(".quiz-header h1"),
-    document.querySelector<HTMLElement>("h1"),
-  ];
-
-  for (const element of candidates) {
-    const text = element?.textContent?.trim();
-    if (text) return text;
-  }
-
-  return undefined;
 }

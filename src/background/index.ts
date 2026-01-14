@@ -10,7 +10,7 @@ import { loadSettings } from "../shared/settings.js";
  * Handle solve requests from content scripts by delegating to OpenAI and returning the result.
  */
 chrome.runtime.onMessage.addListener((message: AssistantMessage, _sender, sendResponse) => {
-  if (message?.type === "cqa:capture-tab") {
+  if (message?.type === "qa:capture-tab") {
     (async () => {
       const dataUrl = await new Promise<string>((resolve, reject) => {
         chrome.tabs.captureVisibleTab({ format: "png" }, (url) => {
@@ -21,31 +21,31 @@ chrome.runtime.onMessage.addListener((message: AssistantMessage, _sender, sendRe
           resolve(url);
         });
       });
-      const response: CaptureTabResponse = { type: "cqa:capture-tab:response", dataUrl };
+      const response: CaptureTabResponse = { type: "qa:capture-tab:response", dataUrl };
       sendResponse(response);
     })().catch((error: unknown) => {
-      sendResponse({ type: "cqa:capture-tab:response", dataUrl: "" } satisfies CaptureTabResponse);
-      console.warn("[CQA] captureVisibleTab failed.", error);
+      sendResponse({ type: "qa:capture-tab:response", dataUrl: "" } satisfies CaptureTabResponse);
+      console.warn("[QuizGPT] captureVisibleTab failed.", error);
     });
     return true;
   }
-  if (message?.type !== "cqa:solve-question") return;
+  if (message?.type !== "qa:solve-question") return;
 
   const { payload } = message;
-  console.log("[CQA] Received solve-question message:", payload.questionId);
+  console.log("[QuizGPT] Received solve-question message:", payload.questionId);
   (async () => {
-    console.log("[CQA] Starting solve-question async handler");
+    console.log("[QuizGPT] Starting solve-question async handler");
     const settings = await loadSettings();
-    console.log("[CQA] Settings loaded, requesting OpenAI solution");
+    console.log("[QuizGPT] Settings loaded, requesting OpenAI solution");
     const result = await requestOpenAiSolution(payload, settings);
     const response: SolveQuestionResponse = {
       ...result,
       questionId: payload.questionId
     };
-    console.log("[CQA] SolveQuestionResponse:", response);
+    console.log("[QuizGPT] SolveQuestionResponse:", response);
     sendResponse(response);
   })().catch((error: unknown) => {
-    console.error("[CQA] Error in solve-question handler:", error);
+    console.error("[QuizGPT] Error in solve-question handler:", error);
     const response: SolveQuestionResponse = {
       status: "error",
       questionId: payload.questionId,
