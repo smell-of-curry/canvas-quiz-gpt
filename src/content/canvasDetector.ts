@@ -21,6 +21,32 @@ export function isCanvasQuizPage(): boolean {
 }
 
 /**
+ * Determine whether the current page is a submitted quiz results view.
+ * Submitted quizzes show answer feedback (correct/incorrect) and should not
+ * display the assistant buttons since they cannot be edited.
+ * @returns Whether the page is a submitted quiz results view.
+ */
+export function isQuizSubmissionResultsPage(): boolean {
+  // Check for result feedback elements that only appear on submitted quizzes
+  const hasAnswerFeedback =
+    document.querySelector(
+      ".correct_answer, .incorrect_answer, .correct, .incorrect"
+    ) !== null;
+  if (hasAnswerFeedback) return true;
+
+  // Check for score display elements
+  const hasScoreDisplay =
+    document.querySelector(".quiz_score, .score_holder, .score_value") !== null;
+  if (hasScoreDisplay) return true;
+
+  // Check if URL indicates history/submission view (e.g., /quizzes/123/history)
+  const path = window.location.pathname ?? "";
+  if (/quizzes\/\d+\/history/i.test(path)) return true;
+
+  return false;
+}
+
+/**
  * Callback invoked for each discovered question container.
  */
 export type QuestionCallback = (element: HTMLElement, index: number) => void;

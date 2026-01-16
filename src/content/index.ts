@@ -1,6 +1,10 @@
 import { applyAnswer } from "./applyAnswer.js";
 import { captureQuestionImage } from "./capture.js";
-import { isCanvasQuizPage, observeQuestions } from "./canvasDetector.js";
+import {
+  isCanvasQuizPage,
+  isQuizSubmissionResultsPage,
+  observeQuestions,
+} from "./canvasDetector.js";
 import { QuestionAssistant } from "./questionAssistant.js";
 import { parseQuestion } from "./questionParser.js";
 import {
@@ -39,12 +43,22 @@ initialize();
  */
 function initialize(): void {
   if (isCanvasQuizPage()) {
+    // Skip attaching assistants on submitted quiz results pages
+    if (isQuizSubmissionResultsPage()) return;
+
     observeQuestions((element, index) => attachAssistant(element, index));
     return;
   }
 
   const watcher = new MutationObserver(() => {
     if (!isCanvasQuizPage()) return;
+
+    // Skip attaching assistants on submitted quiz results pages
+    if (isQuizSubmissionResultsPage()) {
+      watcher.disconnect();
+      return;
+    }
+
     observeQuestions((element, index) => attachAssistant(element, index));
     watcher.disconnect();
   });
