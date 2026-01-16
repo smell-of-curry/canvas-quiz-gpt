@@ -465,12 +465,92 @@ function deriveSelectStableId(
  * @returns The derived label.
  */
 function deriveSelectLabel(select: HTMLSelectElement, index: number): string {
-  const label =
+  // 1. Check direct attributes on the select element
+  const directLabel =
     sanitizeLabel(select.getAttribute("aria-label")) ||
-    sanitizeLabel(select.getAttribute("title")) ||
-    sanitizeLabel(select.name) ||
-    sanitizeLabel(select.id);
+    sanitizeLabel(select.getAttribute("title"));
 
-  if (label) return label;
+  if (directLabel) return directLabel;
+
+  // 2. Check for <label for="..."> pointing to this select
+  if (select.id) {
+    const labelElement = document.querySelector<HTMLElement>(
+      `label[for="${cssEscape(select.id)}"]`
+    );
+    const labelText = sanitizeLabel(labelElement?.textContent);
+    if (labelText) return labelText;
+  }
+
+  // 3. Check if select is inside a <label> element
+  const parentLabel = select.closest("label");
+  if (parentLabel) {
+    const clone = parentLabel.cloneNode(true) as HTMLElement;
+    clone.querySelectorAll("select, option").forEach((el) => el.remove());
+    const labelText = sanitizeLabel(clone.textContent);
+    if (labelText) return labelText;
+  }
+
+  // 4. Check for table row context (common in Canvas matching/dropdown questions)
+  const tableRow = select.closest("tr");
+  if (tableRow) {
+    const cells = Array.from(tableRow.querySelectorAll("td, th"));
+    const selectCell = select.closest("td, th");
+    const selectCellIndex = selectCell ? cells.indexOf(selectCell) : -1;
+
+    // Look at cells before the dropdown for label text
+    for (let i = 0; i < selectCellIndex; i++) {
+      const cellText = sanitizeLabel(cells[i]?.textContent);
+      if (cellText && cellText !== "[ Choose ]") return cellText;
+    }
+  }
+
+  // 5. Check sibling elements (common pattern: label text in preceding sibling)
+  const parent = select.parentElement;
+  if (parent) {
+    const siblings = Array.from(parent.children);
+    const selectIndex = siblings.indexOf(select);
+
+    for (let i = selectIndex - 1; i >= 0; i--) {
+      const sibling = siblings[i];
+      if (
+        sibling instanceof HTMLElement &&
+        !(sibling instanceof HTMLSelectElement)
+      ) {
+        const siblingText = sanitizeLabel(sibling.textContent);
+        if (siblingText && siblingText !== "[ Choose ]") return siblingText;
+      }
+    }
+  }
+
+  // 6. Look for preceding text nodes or span/div with text
+  const container =
+    select.closest(".answer, .answer_row, .question_input, .matching_answer") ??
+    select.parentElement;
+  if (container) {
+    const clone = container.cloneNode(true) as HTMLElement;
+    clone.querySelectorAll("select, option").forEach((el) => el.remove());
+    const containerText = sanitizeLabel(clone.textContent);
+    if (containerText && containerText !== "[ Choose ]") return containerText;
+  }
+
+  // 7. Check aria-labelledby attribute
+  const labelledBy = select.getAttribute("aria-labelledby");
+  if (labelledBy) {
+    const ids = labelledBy.split(/\s+/).filter(Boolean);
+    const parts: string[] = [];
+    for (const id of ids) {
+      const el = document.getElementById(id);
+      const text = sanitizeLabel(el?.textContent);
+      if (text) parts.push(text);
+    }
+    if (parts.length > 0) return parts.join(" ");
+  }
+
+  // 8. Fallback to name or id if they look like human-readable labels
+  const nameOrId = sanitizeLabel(select.name) || sanitizeLabel(select.id);
+  if (nameOrId && !/^(answer_|question_|select[-_]?\d)/i.test(nameOrId)) {
+    return nameOrId;
+  }
+
   return `Dropdown ${index + 1}`;
 }
