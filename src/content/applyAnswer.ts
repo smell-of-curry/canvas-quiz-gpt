@@ -72,30 +72,49 @@ export function applyAnswer(
   }
 
   if (question.type === "text") {
-    const value =
-      typeof answerText === "string"
-        ? answerText
-        : Array.isArray(answerText)
-        ? answerText.join("\n")
-        : "";
-    if (!value)
+    // Get all text input fields
+    const textFields = question.choices.filter(
+      (c) => c.kind === "text"
+    ) as Array<{ element: HTMLInputElement | HTMLTextAreaElement }>;
+
+    if (textFields.length === 0) {
+      return {
+        success: false,
+        error: "Unable to locate text inputs for this question.",
+      };
+    }
+
+    // Parse the answer text into individual values
+    const values = parseMultipleTextAnswers(answerText, textFields.length);
+
+    if (values.length === 0) {
       return {
         success: false,
         error: "GPT did not provide text to populate this response.",
       };
+    }
 
-    const field = question.choices[0]?.element as
-      | HTMLInputElement
-      | HTMLTextAreaElement
-      | undefined;
-    if (!field)
+    // Apply each value to its corresponding text field
+    let appliedCount = 0;
+    for (let i = 0; i < textFields.length; i++) {
+      const field = textFields[i]?.element;
+      if (!field) continue;
+
+      const value = values[i];
+      if (value === undefined || value === "") continue;
+
+      field.value = value;
+      triggerInputEvent(field);
+      appliedCount++;
+    }
+
+    if (appliedCount === 0) {
       return {
         success: false,
-        error: "Unable to locate the text input for this question.",
+        error: "GPT answers could not be applied to any text fields.",
       };
+    }
 
-    field.value = value;
-    triggerInputEvent(field);
     return { success: true };
   }
 
@@ -505,4 +524,80 @@ function applySelectValues(
     };
 
   return { success: true };
+}
+
+/**
+ * Parse answer text into individual values for multiple text inputs.
+ * Handles arrays, newline-separated, and labeled (a), b), etc.) formats.
+ * @param answerText - The raw answer text from GPT.
+ * @param expectedCount - The expected number of answers (number of text fields).
+ * @returns An array of individual answer values.
+ */
+function parseMultipleTextAnswers(
+  answerText: string | string[] | undefined,
+  expectedCount: number
+): string[] {
+  // If already an array, return it directly
+  if (Array.isArray(answerText)) {
+    return answerText.map((v) => v.trim());
+  }
+
+  if (typeof answerText !== "string" || !answerText.trim()) {
+    return [];
+  }
+
+  const trimmed = answerText.trim();
+
+  // Try to parse labeled format like "a) 0.390\nb) 0.210" or "a) 0.390, b) 0.210"
+  // Also handles patterns like "a: 0.390" or "(a) 0.390"
+  const labeledPattern = /[(\s]*([a-z]|\d+)[)\.\:\s]+\s*([^\n,]+?)(?=\s*[(\s]*[a-z\d][)\.\:]+|,\s*[(\s]*[a-z\d][)\.\:]+|\n|$)/gi;
+  const labeledMatches = [...trimmed.matchAll(labeledPattern)];
+
+  if (labeledMatches.length >= 2) {
+    // Extract just the values, sorted by label
+    const parsed = labeledMatches.map((m) => ({
+      label: m[1].toLowerCase(),
+      value: m[2].trim(),
+    }));
+
+    // Sort by label (a, b, c... or 1, 2, 3...)
+    parsed.sort((a, b) => {
+      const aNum = parseInt(a.label, 10);
+      const bNum = parseInt(b.label, 10);
+      if (!isNaN(aNum) && !isNaN(bNum)) return aNum - bNum;
+      return a.label.localeCompare(b.label);
+    });
+
+    return parsed.map((p) => p.value);
+  }
+
+  // Try splitting by newlines
+  if (trimmed.includes("\n")) {
+    const lines = trimmed
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    // Strip leading labels if present (e.g., "a) " or "1. ")
+    return lines.map((line) =>
+      line.replace(/^[(\s]*[a-z\d][)\.\:\s]+\s*/i, "").trim()
+    );
+  }
+
+  // If we expect multiple answers but have a single string, check for
+  // comma-separated values (but be careful with decimals)
+  if (expectedCount > 1 && trimmed.includes(",")) {
+    // Split by comma, but not if the comma is part of a number (e.g., "1,000")
+    // Simple heuristic: split and check if we get the expected count
+    const parts = trimmed.split(",").map((p) => p.trim());
+    if (parts.length >= expectedCount) {
+      // Strip leading labels if present
+      return parts.map((part) =>
+        part.replace(/^[(\s]*[a-z\d][)\.\:\s]+\s*/i, "").trim()
+      );
+    }
+  }
+
+  // Fallback: return as single value
+  return [trimmed];
 }
