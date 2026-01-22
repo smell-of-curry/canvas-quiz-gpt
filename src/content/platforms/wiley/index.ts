@@ -141,13 +141,51 @@ export class WileyPlatformAdapter implements PlatformAdapter {
 
     const collect = () => {
       const containers = this.findQuestionContainers();
+      console.log("[QuizGPT] Wiley collect running, containers:", containers.length, 
+                  containers.map(c => ({ 
+                    hasButton: !!c.querySelector('.qa-button'),
+                    inDOM: document.body.contains(c),
+                    id: c.id || c.className?.slice(0, 50)
+                  })));
       
       containers.forEach((container, index) => {
-        // Skip if already processed
-        if (processed.has(container)) return;
+        // Check for existing button
+        const existingButton = container.querySelector('.qa-button') as HTMLElement | null;
+        if (existingButton) {
+          // Generate a simple hash of the current question content to detect changes
+          const currentContentHash = this.hashQuestionContent(container);
+          const storedHash = existingButton.dataset.questionHash;
+          
+          // If the question content changed, the button is stale - remove it
+          if (storedHash && storedHash !== currentContentHash) {
+            console.log("[QuizGPT] Wiley question content changed, removing stale button:", index, {
+              oldHash: storedHash,
+              newHash: currentContentHash
+            });
+            existingButton.remove();
+            // Also remove from processed so we fully re-process
+            // (WeakSet doesn't have delete, but the button removal means we'll re-add)
+          } else {
+            // Button exists for the same question - verify it's visible
+            const rect = existingButton.getBoundingClientRect();
+            const isVisible = rect.width > 0 && rect.height > 0 && 
+                             document.body.contains(existingButton);
+            
+            if (isVisible) {
+              console.log("[QuizGPT] Wiley container already has visible button for same question, skipping:", index);
+              return;
+            }
+            
+            // Button exists but is not visible/usable - remove it so we can re-add
+            console.log("[QuizGPT] Wiley found hidden/detached button, removing and re-processing:", index);
+            existingButton.remove();
+          }
+        }
         
-        // Skip if already has a button
-        if (container.querySelector('.qa-button')) return;
+        // If previously processed but button is gone/removed, allow re-processing
+        if (processed.has(container)) {
+          console.log("[QuizGPT] Wiley container was processed but needs new button:", index);
+        }
         
         // Skip locked/disabled parts - check for the specific "locked" message
         const containerText = container.textContent ?? "";
@@ -168,7 +206,11 @@ export class WileyPlatformAdapter implements PlatformAdapter {
           return;
         }
 
-        console.log("[QuizGPT] Wiley processing container:", index);
+        console.log("[QuizGPT] Wiley processing container:", index, {
+          hasButton: !!container.querySelector('.qa-button'),
+          inDOM: document.body.contains(container),
+          visible: container.offsetHeight > 0
+        });
         processed.add(container);
         callback(container, index);
       });
@@ -177,11 +219,11 @@ export class WileyPlatformAdapter implements PlatformAdapter {
     // Initial collection with delay for SPA render
     setTimeout(collect, 800);
 
-    // Watch for DOM changes (debounced)
+    // Watch for DOM changes (debounced) - longer delay to let Wiley finish rendering
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     const observer = new MutationObserver(() => {
       if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(collect, 300);
+      debounceTimer = setTimeout(collect, 500);
     });
 
     const root = document.getElementById("root") ?? document.body;
@@ -276,6 +318,65 @@ export class WileyPlatformAdapter implements PlatformAdapter {
   // ─────────────────────────────────────────────────────────────────────────────
 
   /**
+   * Generate a simple hash of question content to detect when the question changes.
+   * Uses the first ~200 chars of text content (excluding button text) as a fingerprint.
+   */
+  private hashQuestionContent(container: HTMLElement): string {
+    // Clone to avoid modifying original
+    const clone = container.cloneNode(true) as HTMLElement;
+    
+    // Remove our button from the clone so it doesn't affect the hash
+    clone.querySelectorAll('.qa-button').forEach(el => el.remove());
+    
+    // Get text content, normalize whitespace, and take first portion
+    const text = (clone.textContent ?? "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 200);
+    
+    // Simple hash function
+    let hash = 0;
+    for (let i = 0; i < text.length; i++) {
+      const char = text.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32bit integer
+    }
+    
+    return hash.toString(36);
+  }
+
+  /**
+   * Check if an element is actually visible on the page.
+   * Filters out elements that are hidden, have zero dimensions, or are off-screen.
+   */
+  private isElementVisible(element: HTMLElement): boolean {
+    // Check if element is connected to DOM
+    if (!document.body.contains(element)) return false;
+    
+    // Check computed style for visibility
+    const style = window.getComputedStyle(element);
+    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+      return false;
+    }
+    
+    // Check bounding rect for actual dimensions
+    const rect = element.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return false;
+    
+    // Check if element is within reasonable viewport bounds
+    // Allow some buffer for elements just outside viewport
+    const buffer = 100;
+    const inViewport = (
+      rect.top < window.innerHeight + buffer &&
+      rect.bottom > -buffer &&
+      rect.left < window.innerWidth + buffer &&
+      rect.right > -buffer
+    );
+    
+    return inViewport;
+  }
+
+  /**
    * Generate a question ID.
    */
   private deriveQuestionId(element: HTMLElement, fallbackIndex: number): string {
@@ -341,8 +442,9 @@ export class WileyPlatformAdapter implements PlatformAdapter {
   private extractChoices(element: HTMLElement): ParsedChoice[] {
     const choices: ParsedChoice[] = [];
 
-    // Find all radio buttons
-    const radios = element.querySelectorAll<HTMLInputElement>('input[type="radio"]');
+    // Find all radio buttons (only visible ones)
+    const radios = Array.from(element.querySelectorAll<HTMLInputElement>('input[type="radio"]'))
+      .filter(el => this.isElementVisible(el));
     console.log("[QuizGPT] Wiley found radios:", radios.length);
     
     radios.forEach((radio, index) => {
@@ -356,8 +458,9 @@ export class WileyPlatformAdapter implements PlatformAdapter {
       });
     });
 
-    // Find all checkboxes
-    const checkboxes = element.querySelectorAll<HTMLInputElement>('input[type="checkbox"]');
+    // Find all checkboxes (only visible ones)
+    const checkboxes = Array.from(element.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'))
+      .filter(el => this.isElementVisible(el));
     checkboxes.forEach((checkbox, index) => {
       const label = this.findLabelForRadioOrCheckbox(checkbox, index);
       choices.push({
@@ -369,32 +472,41 @@ export class WileyPlatformAdapter implements PlatformAdapter {
       });
     });
 
-    // Find all text inputs (Wiley often wraps these in special containers)
-    const textInputs = element.querySelectorAll<HTMLInputElement>(
+    // Find all text inputs (Wiley often wraps these in special containers) - only visible ones
+    const textInputs = Array.from(element.querySelectorAll<HTMLInputElement>(
       'input[type="text"], input[type="number"], input:not([type="radio"]):not([type="checkbox"]):not([type="hidden"]):not([type="submit"]):not([type="button"])'
-    );
+    )).filter(el => this.isElementVisible(el));
     console.log("[QuizGPT] Wiley found text inputs:", textInputs.length);
     
-    textInputs.forEach((input, index) => {
+    let visibleTextIndex = 0;
+    textInputs.forEach((input) => {
       // Skip if it's a radio or checkbox
       if (input.type === "radio" || input.type === "checkbox" || input.type === "hidden") return;
       
-      const label = this.findLabelForTextInput(input, element, index);
+      const { label, partLetter } = this.findLabelAndPartForTextInput(input, element, visibleTextIndex);
+      
+      // Create a meaningful ID: prefer actual id/name, then part-based, then index-based
+      const partId = partLetter ? `part-${partLetter}` : `part-${String.fromCharCode(97 + visibleTextIndex)}`;
+      const inputId = input.id || input.name || partId;
+      
       choices.push({
-        id: input.id || input.name || `text-input-${index + 1}`,
-        label: label || `Answer ${index + 1}`,
+        id: inputId,
+        label: label || `Answer ${visibleTextIndex + 1}`,
         element: input,
         kind: "text",
         value: input.value || undefined,
       });
+      visibleTextIndex++;
     });
 
-    // Find all textareas
-    const textareas = element.querySelectorAll<HTMLTextAreaElement>("textarea");
+    // Find all textareas (only visible ones)
+    const textareas = Array.from(element.querySelectorAll<HTMLTextAreaElement>("textarea"))
+      .filter(el => this.isElementVisible(el));
     textareas.forEach((textarea, index) => {
-      const label = this.findLabelForTextInput(textarea, element, index);
+      const { label, partLetter } = this.findLabelAndPartForTextInput(textarea, element, index);
+      const partId = partLetter ? `part-${partLetter}` : `part-${String.fromCharCode(97 + index)}`;
       choices.push({
-        id: textarea.id || textarea.name || `textarea-${index + 1}`,
+        id: textarea.id || textarea.name || partId,
         label: label || `Text area ${index + 1}`,
         element: textarea,
         kind: "text",
@@ -402,12 +514,13 @@ export class WileyPlatformAdapter implements PlatformAdapter {
       });
     });
 
-    // Find all select/dropdown elements
-    const selects = element.querySelectorAll<HTMLSelectElement>("select");
+    // Find all select/dropdown elements (only visible ones)
+    const selects = Array.from(element.querySelectorAll<HTMLSelectElement>("select"))
+      .filter(el => this.isElementVisible(el));
     console.log("[QuizGPT] Wiley found selects:", selects.length);
     
     selects.forEach((select, selectIndex) => {
-      const selectLabel = this.findLabelForTextInput(select, element, selectIndex);
+      const { label: selectLabel } = this.findLabelAndPartForTextInput(select, element, selectIndex);
       const options = Array.from(select.options);
       
       options.forEach((option) => {
@@ -431,45 +544,97 @@ export class WileyPlatformAdapter implements PlatformAdapter {
   }
 
   /**
-   * Find label for a text input by looking at surrounding context.
+   * Find label and part letter for a text input by looking at surrounding context.
    * Wiley uses patterns like "a) question text... [input]"
    */
-  private findLabelForTextInput(
+  private findLabelAndPartForTextInput(
     input: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
     container: HTMLElement,
     index: number
-  ): string | undefined {
-    // Look for question text before this input
-    // Walk up to find a container that has the question text
+  ): { label: string; partLetter: string | undefined } {
+    const fallbackLetter = String.fromCharCode(97 + index); // a, b, c, ...
+    
+    // Strategy 1: Look for text immediately before the input in the DOM tree
+    // Walk backwards through siblings and parent's content to find the question text
+    let textBefore = this.getTextBeforeElement(input, container);
+    
+    // Look for part patterns like "a)", "b)", "(a)", "1)", etc.
+    const partMatch = textBefore.match(/[(\s]?([a-z])\s*\)|^\s*([a-z])\s*\)/im);
+    const partLetter = partMatch ? (partMatch[1] || partMatch[2])?.toLowerCase() : undefined;
+    
+    // Try to extract a meaningful question segment
+    // Look for the last sentence or phrase that contains the part letter
+    if (partLetter) {
+      // Find text starting from the part marker
+      const partPattern = new RegExp(`[(\s]?${partLetter}\\s*\\)(.{10,500}?)(?:\\?|$)`, 'i');
+      const questionMatch = textBefore.match(partPattern);
+      if (questionMatch) {
+        const questionText = `${partLetter}) ${questionMatch[1].trim()}`.slice(0, 300);
+        return { label: questionText, partLetter };
+      }
+    }
+    
+    // Strategy 2: Check parent containers for question text
     let searchContainer = input.parentElement;
     let attempts = 0;
     
-    while (searchContainer && attempts < 5) {
-      const text = searchContainer.textContent ?? "";
-      // Look for patterns like "a) ...", "b) ...", "1) ...", "(a) ..."
-      const match = text.match(/^[(\s]*([a-z]|\d+)[)\.\s]+(.{10,200}?)(?:\?|:|\s*$)/i);
-      if (match) {
-        const questionText = match[0].replace(/\s+/g, " ").trim();
-        if (questionText.length > 5 && questionText.length < 300) {
-          return questionText;
-        }
-      }
+    while (searchContainer && searchContainer !== container && attempts < 5) {
+      const text = (searchContainer.textContent ?? "").replace(/\s+/g, " ").trim();
       
-      // Also check for nearby paragraph or div with question text
-      const prevSibling = searchContainer.previousElementSibling;
-      if (prevSibling instanceof HTMLElement) {
-        const sibText = prevSibling.textContent?.trim();
-        if (sibText && sibText.length > 10 && sibText.length < 300) {
-          return sibText;
-        }
+      // Look for patterns like "a) ...", "b) ...", "1) ...", "(a) ..."
+      const match = text.match(/[(\s]?([a-z])\s*\)\s*(.{10,400}?)(?:\?|:|$)/i);
+      if (match) {
+        const letter = match[1].toLowerCase();
+        const questionText = `${letter}) ${match[2].trim()}`.slice(0, 300);
+        return { label: questionText, partLetter: letter };
       }
       
       searchContainer = searchContainer.parentElement;
       attempts++;
     }
     
+    // Strategy 3: Previous sibling text
+    const prevSibling = input.parentElement?.previousElementSibling;
+    if (prevSibling instanceof HTMLElement) {
+      const sibText = (prevSibling.textContent ?? "").replace(/\s+/g, " ").trim();
+      const match = sibText.match(/[(\s]?([a-z])\s*\)\s*(.{10,400}?)(?:\?|:|$)/i);
+      if (match) {
+        const letter = match[1].toLowerCase();
+        const questionText = `${letter}) ${match[2].trim()}`.slice(0, 300);
+        return { label: questionText, partLetter: letter };
+      }
+      if (sibText.length > 10 && sibText.length < 300) {
+        return { label: sibText, partLetter: undefined };
+      }
+    }
+    
     // Fallback: use generic label with letter
-    return `Answer ${String.fromCharCode(97 + index)})`;
+    return { 
+      label: `Answer for part ${fallbackLetter})`, 
+      partLetter: fallbackLetter 
+    };
+  }
+
+  /**
+   * Get text content that appears before a given element within a container.
+   */
+  private getTextBeforeElement(element: HTMLElement, container: HTMLElement): string {
+    const texts: string[] = [];
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    
+    let node: Node | null;
+    while ((node = walker.nextNode())) {
+      // Stop when we reach or pass the target element
+      if (element.contains(node) || 
+          (node.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_PRECEDING)) {
+        break;
+      }
+      const text = node.textContent?.trim();
+      if (text) texts.push(text);
+    }
+    
+    // Return the last ~1000 chars of accumulated text
+    return texts.join(" ").slice(-1000);
   }
 
   /**
