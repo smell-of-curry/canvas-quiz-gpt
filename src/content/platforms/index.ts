@@ -11,6 +11,7 @@
 import { platformRegistry } from "./registry.js";
 import { CanvasPlatformAdapter } from "./canvas/index.js";
 import { WileyPlatformAdapter } from "./wiley/index.js";
+import { McGrawHillPlatformAdapter } from "./mcgrawhill/index.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Register Canvas LMS adapter
@@ -28,6 +29,15 @@ platformRegistry.register(
   new WileyPlatformAdapter(),
   [/education\.wiley\.com/i, /wileyplus\.com/i],
   ["https://education.wiley.com/*", "https://*.wileyplus.com/*"]
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Register McGraw Hill Connect adapter
+// ─────────────────────────────────────────────────────────────────────────────
+platformRegistry.register(
+  new McGrawHillPlatformAdapter(),
+  [/learning\.mheducation\.com/i],
+  ["https://learning.mheducation.com/*"]
 );
 
 // ─────────────────────────────────────────────────────────────────────────────

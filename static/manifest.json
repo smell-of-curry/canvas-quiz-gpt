@@ -2,12 +2,13 @@
   "manifest_version": 3,
   "name": "Quiz GPT",
   "version": "0.2.0",
-  "description": "Assist with online quizzes by capturing questions and requesting GPT answers. Supports Canvas LMS, WileyPLUS, and more.",
+  "description": "Assist with online quizzes by capturing questions and requesting GPT answers. Supports Canvas LMS, WileyPLUS, McGraw Hill, and more.",
   "permissions": ["storage", "scripting", "activeTab", "tabs"],
   "host_permissions": [
     "https://*.instructure.com/*",
     "https://education.wiley.com/*",
     "https://*.wileyplus.com/*",
+    "https://learning.mheducation.com/*",
     "https://api.openai.com/*"
   ],
   "background": {
@@ -33,7 +34,8 @@
       "matches": [
         "https://*.instructure.com/*",
         "https://education.wiley.com/*",
-        "https://*.wileyplus.com/*"
+        "https://*.wileyplus.com/*",
+        "https://learning.mheducation.com/*"
       ],
       "js": ["content.js"],
       "run_at": "document_idle"
@@ -51,7 +53,8 @@
       "matches": [
         "https://*.instructure.com/*",
         "https://education.wiley.com/*",
-        "https://*.wileyplus.com/*"
+        "https://*.wileyplus.com/*",
+        "https://learning.mheducation.com/*"
       ]
     }
   ]

@@ -8,12 +8,77 @@ import type { ParsedQuestion } from "./platforms/types.js";
 export type ApplyResult = { success: true } | { success: false; error: string };
 
 /**
- * Emit synthetic events to ensure Canvas detects programmatic answer changes.
+ * Emit synthetic events to ensure quiz platforms detect programmatic answer changes.
+ * Different frameworks (Canvas, Angular/McGraw Hill, React) listen for different events.
  * @param element - The HTML input element to trigger events on.
  */
 function triggerInputEvent(element: HTMLElement): void {
+  // Focus the element first (some frameworks need this)
+  element.focus();
+
+  // For Angular apps (McGraw Hill), we need to simulate a real click
+  // This triggers Angular's change detection and form control updates
+  const clickEvent = new MouseEvent("click", {
+    bubbles: true,
+    cancelable: true,
+    view: window,
+  });
+  element.dispatchEvent(clickEvent);
+
+  // Standard input/change events (Canvas, vanilla JS)
   element.dispatchEvent(new Event("input", { bubbles: true }));
   element.dispatchEvent(new Event("change", { bubbles: true }));
+
+  // Blur to finalize (triggers validation in some frameworks)
+  element.dispatchEvent(new FocusEvent("blur", { bubbles: true }));
+}
+
+/**
+ * Trigger events specifically for radio/checkbox clicks in Angular apps.
+ * Clicks the parent label if available, which is how users actually interact.
+ * @param input - The input element to click.
+ */
+function triggerRadioClick(input: HTMLInputElement): void {
+  // Find the parent label - clicking the label is more reliable for Angular
+  const label = input.closest("label") ?? document.querySelector(`label[for="${input.id}"]`);
+  
+  // Focus the input
+  input.focus();
+  
+  // Simulate mousedown -> mouseup -> click sequence (Angular listens for these)
+  const mousedownEvent = new MouseEvent("mousedown", {
+    bubbles: true,
+    cancelable: true,
+    view: window,
+  });
+  const mouseupEvent = new MouseEvent("mouseup", {
+    bubbles: true,
+    cancelable: true,
+    view: window,
+  });
+  const clickEvent = new MouseEvent("click", {
+    bubbles: true,
+    cancelable: true,
+    view: window,
+  });
+
+  // If there's a label, click that (more natural user interaction)
+  const clickTarget = label ?? input;
+  clickTarget.dispatchEvent(mousedownEvent);
+  clickTarget.dispatchEvent(mouseupEvent);
+  clickTarget.dispatchEvent(clickEvent);
+
+  // Also dispatch on the input directly if we clicked the label
+  if (label && label !== input) {
+    input.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
+  }
+
+  // Standard events
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+  
+  // Blur to finalize
+  input.dispatchEvent(new FocusEvent("blur", { bubbles: true }));
 }
 
 /**
@@ -44,7 +109,7 @@ export function applyAnswer(
     if (input.checked) return { success: true };
 
     input.checked = true;
-    triggerInputEvent(input);
+    triggerRadioClick(input);
     return { success: true };
   }
 
@@ -63,7 +128,7 @@ export function applyAnswer(
       if (choice.element.checked === shouldSelect) continue;
 
       choice.element.checked = shouldSelect;
-      triggerInputEvent(choice.element);
+      triggerRadioClick(choice.element);
       appliedAny = true;
     }
 
