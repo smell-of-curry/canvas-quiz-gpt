@@ -1,6 +1,6 @@
 import html2canvas from "html2canvas";
 
-const CAPTURE_MARKER_ATTRIBUTE = "data-cqa-capture-root";
+const CAPTURE_MARKER_ATTRIBUTE = "data-qa-capture-root";
 const CAPTURE_MARKER_VALUE = "true";
 const DEFAULT_PLACEHOLDER_SIZE = 48;
 
@@ -14,6 +14,15 @@ const DEFAULT_PLACEHOLDER_SIZE = 48;
 export async function captureQuestionImage(
   element: HTMLElement
 ): Promise<string> {
+  // If the element contains cross-origin images, use tab screenshot directly
+  // to ensure the actual rendered images are captured (not placeholders)
+  if (hasCrossOriginImages(element)) {
+    console.log("[QuizGPT] Cross-origin images detected, using tab screenshot.");
+    const tabScreenshot = await captureByTabScreenshot(element);
+    if (tabScreenshot) return tabScreenshot;
+    // If tab screenshot fails, fall through to html2canvas as last resort
+  }
+
   const previousMarker = element.getAttribute(CAPTURE_MARKER_ATTRIBUTE);
   element.setAttribute(CAPTURE_MARKER_ATTRIBUTE, CAPTURE_MARKER_VALUE);
 
@@ -37,13 +46,13 @@ export async function captureQuestionImage(
     if (dataUrl) return dataUrl;
 
     console.warn(
-      "[CQA] Canvas serialization blocked by cross-origin content. Falling back to tab capture."
+      "[QuizGPT] Canvas serialization blocked by cross-origin content. Falling back to tab capture."
     );
     // Fallback: capture the visible tab and crop to the element bounds
     const fallback = await captureByTabScreenshot(element);
     return fallback ?? "";
   } catch (error) {
-    console.warn("[CQA] Failed to capture question image.", error);
+    console.warn("[QuizGPT] Failed to capture question image.", error);
     return "";
   } finally {
     if (previousMarker === null) {
@@ -66,7 +75,7 @@ function tryGetCanvasDataUrl(canvas: HTMLCanvasElement): string | undefined {
     if (error instanceof DOMException && error.name === "SecurityError")
       return undefined;
     console.warn(
-      "[CQA] Unexpected error while serializing question canvas.",
+      "[QuizGPT] Unexpected error while serializing question canvas.",
       error
     );
     return undefined;
@@ -91,27 +100,51 @@ async function captureByTabScreenshot(
     // ignore
   }
 
-  await wait(150);
+  // Wait longer for the page to settle after scrolling
+  await wait(300);
 
   const rect = element.getBoundingClientRect();
-  if (rect.width <= 1 || rect.height <= 1) return undefined;
+  console.log("[QuizGPT] Tab screenshot - element rect:", {
+    width: rect.width,
+    height: rect.height,
+    top: rect.top,
+    left: rect.left,
+  });
+
+  if (rect.width <= 1 || rect.height <= 1) {
+    console.warn("[QuizGPT] Tab screenshot - element has no size");
+    return undefined;
+  }
 
   const dpr = window.devicePixelRatio || 1;
+  console.log("[QuizGPT] Tab screenshot - devicePixelRatio:", dpr);
+
   const response = (await chrome.runtime.sendMessage({
-    type: "cqa:capture-tab",
-  })) as { type: "cqa:capture-tab:response"; dataUrl: string } | undefined;
+    type: "qa:capture-tab",
+  })) as { type: "qa:capture-tab:response"; dataUrl: string } | undefined;
 
   const tabPng = response?.dataUrl ?? "";
-  if (!tabPng) return undefined;
+  if (!tabPng) {
+    console.warn("[QuizGPT] Tab screenshot - no dataUrl from background");
+    return undefined;
+  }
+
+  console.log("[QuizGPT] Tab screenshot - received dataUrl length:", tabPng.length);
 
   const image = await loadImage(tabPng);
+  console.log("[QuizGPT] Tab screenshot - loaded image size:", image.width, "x", image.height);
 
   const sx = Math.max(0, Math.floor(rect.left * dpr));
   const sy = Math.max(0, Math.floor(rect.top * dpr));
   const sw = Math.min(Math.floor(rect.width * dpr), image.width - sx);
   const sh = Math.min(Math.floor(rect.height * dpr), image.height - sy);
 
-  if (sw <= 0 || sh <= 0) return undefined;
+  console.log("[QuizGPT] Tab screenshot - crop region:", { sx, sy, sw, sh });
+
+  if (sw <= 0 || sh <= 0) {
+    console.warn("[QuizGPT] Tab screenshot - invalid crop region");
+    return undefined;
+  }
 
   const canvas = document.createElement("canvas");
   canvas.width = sw;
@@ -120,7 +153,9 @@ async function captureByTabScreenshot(
   if (!ctx) return undefined;
 
   ctx.drawImage(image, sx, sy, sw, sh, 0, 0, sw, sh);
-  return canvas.toDataURL("image/png");
+  const result = canvas.toDataURL("image/png");
+  console.log("[QuizGPT] Tab screenshot - final dataUrl length:", result.length);
+  return result;
 }
 
 /**
@@ -245,4 +280,20 @@ function isCrossOriginSource(src: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Check if an element contains any cross-origin images.
+ * @param element - The element to check.
+ * @returns Whether the element contains cross-origin images.
+ */
+function hasCrossOriginImages(element: HTMLElement): boolean {
+  const images = element.querySelectorAll("img");
+  for (const img of images) {
+    const src = img.getAttribute("src") ?? "";
+    if (src && isCrossOriginSource(src)) {
+      return true;
+    }
+  }
+  return false;
 }

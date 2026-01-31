@@ -95,7 +95,8 @@ function buildQuestionSummary(payload: SolveQuestionPayload): string {
     "Important: Populate answerIds with the exact id strings shown in brackets. If you select options by letter or number, convert them back to the matching id.",
     "For single- or multi-select questions (radio/checkbox), set answerText to the chosen label(s) (string for one choice, array for multiple).",
     "For dropdown/select questions, return one answerId per dropdown (in DOM order). Set answerText to the chosen label(s) (string for one dropdown, array for multiple).",
-    "For text-entry questions, answerText must contain the text to insert."
+    "For text-entry questions with MULTIPLE inputs (e.g., parts a, b, c, d), answerText MUST be an array with one value per input in order. Example: [\"0.390\", \"0.210\", \"0.381\", \"0.205\"] for 4 text boxes.",
+    "For text-entry questions with a single input, answerText should be a string."
   );
   return lines.filter(Boolean).join("\n");
 }
@@ -169,7 +170,7 @@ export async function requestOpenAiSolution(
           {
             role: "system",
             content:
-              'You are a Canvas LMS quiz assistant. Analyze the provided question and choices, then respond with strict JSON: {"answerIds": string[], "reasoning": string, "answerText": string | string[]}. Always fill answerIds with the exact id values supplied in the prompt. For radio/checkbox questions, mirror the selected choice labels in answerText (string for one selection, array for multiple). For dropdown/select questions, return one answerId per dropdown (in DOM order) and mirror the selected option labels in answerText (string for one dropdown, array for multiple). If unsure, leave answerIds empty, set answerText to an explanatory string, and explain why.',
+              'You are a quiz assistant that helps answer online quiz questions. Analyze the provided question and choices, then respond with strict JSON: {"answerIds": string[], "reasoning": string, "answerText": string | string[]}. Always fill answerIds with the exact id values supplied in the prompt. For radio/checkbox questions, mirror the selected choice labels in answerText (string for one selection, array for multiple). For dropdown/select questions, return one answerId per dropdown (in DOM order) and mirror the selected option labels in answerText (string for one dropdown, array for multiple). For text-entry questions with multiple input fields (like parts a, b, c, d), answerText MUST be an array with one answer per field in order, e.g., ["0.390", "0.210", "0.381", "0.205"]. If unsure, leave answerIds empty, set answerText to an explanatory string, and explain why.',
           },
           {
             role: "user",

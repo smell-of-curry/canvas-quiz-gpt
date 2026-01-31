@@ -68,6 +68,14 @@ export type SolveQuestionPayload = {
      * The number of the question.
      */
     questionNumber?: number;
+    /**
+     * The platform identifier (e.g., "canvas", "wiley", "expertta").
+     */
+    platform?: string;
+    /**
+     * Human-readable platform name.
+     */
+    platformName?: string;
   };
 };
 
@@ -78,7 +86,7 @@ export type SolveQuestionRequest = {
   /**
    * The type of request.
    */
-  type: "cqa:solve-question";
+  type: "qa:solve-question";
   /**
    * The payload for the request.
    */
@@ -164,14 +172,14 @@ export type SolveQuestionResponse =
  * Request to capture a screenshot of the visible tab.
  */
 export type CaptureTabRequest = {
-  type: "cqa:capture-tab";
+  type: "qa:capture-tab";
 };
 
 /**
  * Response containing a PNG data URL for the visible tab.
  */
 export type CaptureTabResponse = {
-  type: "cqa:capture-tab:response";
+  type: "qa:capture-tab:response";
   dataUrl: string;
 };
 
