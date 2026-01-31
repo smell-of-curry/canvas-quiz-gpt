@@ -9,6 +9,7 @@
     "https://education.wiley.com/*",
     "https://*.wileyplus.com/*",
     "https://learning.mheducation.com/*",
+    "https://ezto.mheducation.com/*",
     "https://api.openai.com/*"
   ],
   "background": {
@@ -35,7 +36,8 @@
         "https://*.instructure.com/*",
         "https://education.wiley.com/*",
         "https://*.wileyplus.com/*",
-        "https://learning.mheducation.com/*"
+        "https://learning.mheducation.com/*",
+        "https://ezto.mheducation.com/*"
       ],
       "js": ["content.js"],
       "run_at": "document_idle"
@@ -54,7 +56,8 @@
         "https://*.instructure.com/*",
         "https://education.wiley.com/*",
         "https://*.wileyplus.com/*",
-        "https://learning.mheducation.com/*"
+        "https://learning.mheducation.com/*",
+        "https://ezto.mheducation.com/*"
       ]
     }
   ]

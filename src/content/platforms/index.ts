@@ -36,8 +36,8 @@ platformRegistry.register(
 // ─────────────────────────────────────────────────────────────────────────────
 platformRegistry.register(
   new McGrawHillPlatformAdapter(),
-  [/learning\.mheducation\.com/i],
-  ["https://learning.mheducation.com/*"]
+  [/learning\.mheducation\.com/i, /ezto\.mheducation\.com/i],
+  ["https://learning.mheducation.com/*", "https://ezto.mheducation.com/*"]
 );
 
 // ─────────────────────────────────────────────────────────────────────────────

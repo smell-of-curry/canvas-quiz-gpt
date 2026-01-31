@@ -21,7 +21,11 @@ export class McGrawHillPlatformAdapter implements PlatformAdapter {
     const url = window.location.href;
 
     // Check URL patterns for McGraw Hill assessment player
-    const isMcGrawHill = /learning\.mheducation\.com/i.test(url);
+    // - learning.mheducation.com: Angular-based Connect interface
+    // - ezto.mheducation.com: Ember-based Connect interface (PAAM)
+    const isMcGrawHill =
+      /learning\.mheducation\.com/i.test(url) ||
+      /ezto\.mheducation\.com/i.test(url);
 
     console.log("[QuizGPT] McGrawHill isQuizPage check:", { url, isMcGrawHill });
 
@@ -82,7 +86,30 @@ export class McGrawHillPlatformAdapter implements PlatformAdapter {
       }
     }
 
-    // Strategy 3: Fallback - look for .multiple-choice-component, .sortable-component, or .dlc_question containers
+    // Strategy 3: Look for Ember-based PAAM interface (ezto.mheducation.com)
+    // Only use .question-wrap (outer container) to avoid duplicate buttons from nested .worksheet-wrap
+    if (containers.length === 0) {
+      const questionWraps = document.querySelectorAll<HTMLElement>(".question-wrap");
+
+      for (const wrap of questionWraps) {
+        if (seen.has(wrap) || !this.isElementVisible(wrap)) continue;
+
+        // Check for worksheet inputs (Ember PAAM uses .worksheet__input)
+        const hasWorksheetInputs = wrap.querySelector(
+          '.worksheet__input, .worksheet__numeric'
+        );
+        const hasStandardInputs = wrap.querySelector(
+          'input[type="radio"], input[type="checkbox"], input[type="text"], textarea, select'
+        );
+
+        if (!hasWorksheetInputs && !hasStandardInputs) continue;
+
+        seen.add(wrap);
+        containers.push(wrap);
+      }
+    }
+
+    // Strategy 4: Fallback - look for .multiple-choice-component, .sortable-component, or .dlc_question containers
     if (containers.length === 0) {
       const questionContainers = document.querySelectorAll<HTMLElement>(
         ".multiple-choice-component, .sortable-component, .dlc_question, .air-item"
@@ -195,7 +222,10 @@ export class McGrawHillPlatformAdapter implements PlatformAdapter {
         const hasSortableItems = container.querySelector(
           '.sortable-component .choice-item, [data-react-beautiful-dnd-draggable]'
         );
-        if (!hasActiveInputs && !hasSortableItems) {
+        const hasWorksheetInputs = container.querySelector(
+          '.worksheet__input:not(:disabled), .worksheet__numeric:not(:disabled)'
+        );
+        if (!hasActiveInputs && !hasSortableItems && !hasWorksheetInputs) {
           console.log(
             "[QuizGPT] McGrawHill skipping container with no active inputs or sortable items:",
             index
@@ -228,17 +258,21 @@ export class McGrawHillPlatformAdapter implements PlatformAdapter {
               node instanceof HTMLElement &&
               (node.tagName === "AA-AIR-ITEM" ||
                 node.tagName === "AVALON-PROBE-RENDERER" ||
-                node.querySelector?.("aa-air-item, avalon-probe-renderer, .choice-row"))
+                node.classList?.contains("question-wrap") ||
+                node.classList?.contains("worksheet-wrap") ||
+                node.querySelector?.("aa-air-item, avalon-probe-renderer, .choice-row, .worksheet__input"))
           );
           if (hasRelevantNodes) return true;
         }
-        // Check for attribute changes on probe elements (Angular uses these)
+        // Check for attribute changes on probe elements (Angular uses these) or Ember views
         if (mutation.type === "attributes") {
           const target = mutation.target as HTMLElement;
           if (
             target.tagName === "AA-AIR-ITEM" ||
             target.tagName === "AVALON-PROBE-RENDERER" ||
-            target.closest?.("aa-air-item, avalon-probe-renderer")
+            target.classList?.contains("question-wrap") ||
+            target.classList?.contains("worksheet-wrap") ||
+            target.closest?.("aa-air-item, avalon-probe-renderer, .question-wrap, .worksheet-wrap")
           ) {
             return true;
           }
@@ -252,12 +286,14 @@ export class McGrawHillPlatformAdapter implements PlatformAdapter {
       }
     });
 
-    // Watch multiple potential root elements for Angular changes
+    // Watch multiple potential root elements for Angular/Ember changes
     const roots = [
       document.querySelector(".main__probe"),
       document.querySelector("awd-probe-navigation"),
       document.querySelector(".content__main"),
       document.querySelector(".root__content"),
+      document.querySelector(".body-wrap"), // Ember PAAM
+      document.querySelector("main.l-main"), // Ember PAAM main content
       document.getElementById("root"),
       document.body,
     ].filter(Boolean) as HTMLElement[];
@@ -282,14 +318,15 @@ export class McGrawHillPlatformAdapter implements PlatformAdapter {
       }
     }, 500);
 
-    // Periodic check as fallback - Angular sometimes doesn't trigger mutations we catch
+    // Periodic check as fallback - Angular/Ember sometimes doesn't trigger mutations we catch
     // Check every 2 seconds if there's no button but there should be
     const periodicChecker = setInterval(() => {
       const containers = this.findQuestionContainers();
       const needsButton = containers.some(
         (c) => !c.querySelector(".qa-button") && (
           c.querySelector('input[type="radio"], input[type="checkbox"]') ||
-          c.querySelector('.sortable-component .choice-item, [data-react-beautiful-dnd-draggable]')
+          c.querySelector('.sortable-component .choice-item, [data-react-beautiful-dnd-draggable]') ||
+          c.querySelector('.worksheet__input, .worksheet__numeric') // Ember PAAM inputs
         )
       );
       if (needsButton) {
@@ -339,6 +376,15 @@ export class McGrawHillPlatformAdapter implements PlatformAdapter {
    * Attempt to extract the quiz/assignment title for additional prompt context.
    */
   getQuizTitle(): string | undefined {
+    // Try Ember PAAM header activity (ezto.mheducation.com)
+    const headerActivity = document.querySelector<HTMLElement>(".header__activity");
+    if (headerActivity) {
+      const text = headerActivity.textContent?.trim();
+      if (text && text.length > 3 && text.length < 100) {
+        return text;
+      }
+    }
+
     // Try the progress widget area
     const progressWidget = document.querySelector<HTMLElement>(
       "awd-progress-widget"
@@ -480,6 +526,27 @@ export class McGrawHillPlatformAdapter implements PlatformAdapter {
    * Extract question number from the page.
    */
   private extractQuestionNumber(): number | undefined {
+    // Try Ember PAAM question number (ezto.mheducation.com)
+    const questionNumberWrap = document.querySelector<HTMLElement>(".question__number-wrap");
+    if (questionNumberWrap) {
+      const text = questionNumberWrap.textContent?.trim();
+      if (text) {
+        const match = text.match(/(\d+)/);
+        if (match) {
+          return parseInt(match[1], 10);
+        }
+      }
+    }
+
+    // Try footer progress info (Ember PAAM)
+    const footerProgress = document.querySelector<HTMLElement>(".footer__progress__heading__question b");
+    if (footerProgress?.textContent) {
+      const num = parseInt(footerProgress.textContent.trim(), 10);
+      if (!isNaN(num)) {
+        return num;
+      }
+    }
+
     // Look for "X of Y Concepts completed" pattern
     const conceptsText = document.querySelector(".pw__concepts-count");
     if (conceptsText?.textContent) {
@@ -507,6 +574,20 @@ export class McGrawHillPlatformAdapter implements PlatformAdapter {
     const dlcQuestion = element.querySelector<HTMLElement>(".dlc_question");
     if (dlcQuestion) {
       return this.cleanTextContent(dlcQuestion);
+    }
+
+    // Try worksheet__main for Ember PAAM interface
+    const worksheetMain = element.querySelector<HTMLElement>(".worksheet__main");
+    if (worksheetMain) {
+      // Clone and clean up for better text extraction
+      const clone = worksheetMain.cloneNode(true) as HTMLElement;
+      // Remove input fields but keep the surrounding text which provides context
+      clone.querySelectorAll("input, button, textarea, select").forEach((el) => {
+        // Replace inputs with a placeholder to show where answers go
+        const placeholder = document.createTextNode(" [____] ");
+        el.parentNode?.replaceChild(placeholder, el);
+      });
+      return this.cleanTextContent(clone);
     }
 
     // Fallback: clone and extract
@@ -631,12 +712,43 @@ export class McGrawHillPlatformAdapter implements PlatformAdapter {
       });
     });
 
-    // Strategy 3: Text inputs
+    // Strategy 3: Worksheet inputs (Ember PAAM interface)
+    const worksheetInputs = Array.from(
+      element.querySelectorAll<HTMLInputElement>(
+        '.worksheet__input, .worksheet__numeric'
+      )
+    ).filter((el) => this.isElementVisible(el));
+
+    if (worksheetInputs.length > 0) {
+      console.log("[QuizGPT] McGrawHill found worksheet inputs:", worksheetInputs.length);
+      worksheetInputs.forEach((input, index) => {
+        // Get label from aria-label (e.g., "Numeric Response 1")
+        const ariaLabel = input.getAttribute("aria-label");
+        // Also try to get context from surrounding text
+        const surroundingText = this.getWorksheetInputContext(input);
+        const label = surroundingText || ariaLabel || `Answer ${index + 1}`;
+
+        choices.push({
+          id: input.id || `worksheet-${index + 1}`,
+          label,
+          element: input,
+          kind: "text",
+          value: input.value || undefined,
+        });
+      });
+
+      if (choices.length > 0) {
+        console.log("[QuizGPT] McGrawHill total worksheet choices:", choices.length);
+        return choices;
+      }
+    }
+
+    // Strategy 4: Text inputs (general)
     const textInputs = Array.from(
       element.querySelectorAll<HTMLInputElement>(
         'input[type="text"], input[type="number"], input:not([type="radio"]):not([type="checkbox"]):not([type="hidden"]):not([type="submit"]):not([type="button"])'
       )
-    ).filter((el) => this.isElementVisible(el));
+    ).filter((el) => this.isElementVisible(el) && !el.classList.contains("worksheet__input"));
 
     textInputs.forEach((input, index) => {
       if (
@@ -656,7 +768,7 @@ export class McGrawHillPlatformAdapter implements PlatformAdapter {
       });
     });
 
-    // Strategy 4: Textareas
+    // Strategy 5: Textareas
     const textareas = Array.from(
       element.querySelectorAll<HTMLTextAreaElement>("textarea")
     ).filter((el) => this.isElementVisible(el));
@@ -672,7 +784,7 @@ export class McGrawHillPlatformAdapter implements PlatformAdapter {
       });
     });
 
-    // Strategy 5: Select dropdowns
+    // Strategy 6: Select dropdowns
     const selects = Array.from(
       element.querySelectorAll<HTMLSelectElement>("select")
     ).filter((el) => this.isElementVisible(el));
@@ -706,6 +818,56 @@ export class McGrawHillPlatformAdapter implements PlatformAdapter {
 
     console.log("[QuizGPT] McGrawHill total choices:", choices.length);
     return choices;
+  }
+
+  /**
+   * Get context for a worksheet input by looking at surrounding text.
+   * In Ember PAAM, inputs are embedded in sentences like:
+   * "The number of nodes present in the given circuit is [input]."
+   */
+  private getWorksheetInputContext(input: HTMLInputElement): string | undefined {
+    // Walk up to find the containing paragraph or similar text block
+    const paragraph = input.closest("p");
+    if (!paragraph) return undefined;
+
+    // Clone the paragraph and replace the input with a marker
+    const clone = paragraph.cloneNode(true) as HTMLElement;
+    const inputsInClone = clone.querySelectorAll("input, select, textarea");
+
+    // Find which input index this is (for multi-input paragraphs)
+    let inputIndex = 0;
+    const allInputs = paragraph.querySelectorAll("input, select, textarea");
+    for (let i = 0; i < allInputs.length; i++) {
+      if (allInputs[i] === input) {
+        inputIndex = i;
+        break;
+      }
+    }
+
+    // Replace inputs with markers
+    inputsInClone.forEach((el, idx) => {
+      const marker = document.createTextNode(idx === inputIndex ? " [THIS ANSWER] " : " [____] ");
+      el.parentNode?.replaceChild(marker, el);
+    });
+
+    // Get the text and clean it up
+    let text = clone.textContent ?? "";
+    text = text.replace(/\s+/g, " ").trim();
+
+    // If text is too long, truncate intelligently
+    if (text.length > 150) {
+      // Try to keep the part with [THIS ANSWER] visible
+      const markerPos = text.indexOf("[THIS ANSWER]");
+      if (markerPos > 0) {
+        const start = Math.max(0, markerPos - 60);
+        const end = Math.min(text.length, markerPos + 80);
+        text = (start > 0 ? "..." : "") + text.slice(start, end) + (end < text.length ? "..." : "");
+      } else {
+        text = text.slice(0, 150) + "...";
+      }
+    }
+
+    return text || undefined;
   }
 
   /**
